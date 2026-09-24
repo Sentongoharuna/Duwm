@@ -39,8 +39,7 @@ jobs:
 
           echo "PROJECT_DIR=$RUNNER_TEMP/duwm" >> "$GITHUB_ENV"
 
-          echo "SOURCE EXTRACTED"
-          find "$RUNNER_TEMP/duwm" -maxdepth 2 -type f | head -50
+          echo "SOURCE EXTRACTED SUCCESSFULLY"
 
       - name: Verify Android project
         shell: bash
@@ -166,7 +165,8 @@ jobs:
           APK="$(find "$PROJECT_DIR/app/build/outputs/apk" \
             -type f \
             -name "*.apk" \
-            | head -n 1)"
+            -print \
+            -quit)"
 
           if [ -z "$APK" ]; then
             echo "ERROR: APK NOT FOUND"
@@ -183,6 +183,7 @@ jobs:
           echo "APK VERIFIED:"
           ls -lh "$APK"
 
+          echo "APK SHA256:"
           sha256sum "$APK"
 
       - name: Upload DUWM APK
