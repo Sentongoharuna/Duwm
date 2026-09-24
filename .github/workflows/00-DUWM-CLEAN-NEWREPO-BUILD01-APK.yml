@@ -12,34 +12,54 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Verify source archive
         shell: bash
         run: |
           set -euo pipefail
-          test -f DUWM-CLEAN-NEWREPO-BUILD01-SOURCE.tar.gz
+
+          test -f "DUWM-CLEAN-NEWREPO-BUILD01-SOURCE.tar.gz"
+
           echo "5ae17da3470f6c2a43426f67735cc10fb2bbf550dc3002dedb6762b033ba24f7  DUWM-CLEAN-NEWREPO-BUILD01-SOURCE.tar.gz" | sha256sum -c -
+
+          echo "SOURCE ARCHIVE VERIFIED"
 
       - name: Extract DUWM source
         shell: bash
         run: |
           set -euo pipefail
+
           rm -rf "$RUNNER_TEMP/duwm"
           mkdir -p "$RUNNER_TEMP/duwm"
-          tar -xzf DUWM-CLEAN-NEWREPO-BUILD01-SOURCE.tar.gz \
+
+          tar -xzf "DUWM-CLEAN-NEWREPO-BUILD01-SOURCE.tar.gz" \
             -C "$RUNNER_TEMP/duwm"
+
           echo "PROJECT_DIR=$RUNNER_TEMP/duwm" >> "$GITHUB_ENV"
+
+          echo "SOURCE EXTRACTED"
+          find "$RUNNER_TEMP/duwm" -maxdepth 2 -type f | head -50
 
       - name: Verify Android project
         shell: bash
         run: |
           set -euo pipefail
-          test -f "$PROJECT_DIR/settings.gradle"
-          test -f "$PROJECT_DIR/build.gradle"
-          test -f "$PROJECT_DIR/app/build.gradle"
+
+          echo "Checking extracted Android project..."
+
+          test -f "$PROJECT_DIR/settings.gradle.kts"
+          test -f "$PROJECT_DIR/build.gradle.kts"
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
           test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+
+          echo "settings.gradle.kts: OK"
+          echo "build.gradle.kts: OK"
+          echo "app/build.gradle.kts: OK"
+          echo "AndroidManifest.xml: OK"
+
+          echo "DUWM ANDROID PROJECT VERIFIED"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -51,10 +71,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
           test -d "$SDK"
+
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          echo "ANDROID SDK: $SDK"
+
+          if [ -d "$SDK/platforms/android-36" ]; then
+            echo "ANDROID 36 PLATFORM: AVAILABLE"
+          else
+            echo "ANDROID 36 PLATFORM NOT PREINSTALLED"
+          fi
 
       - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v4
@@ -62,27 +93,97 @@ jobs:
           gradle-version: "8.13"
           cache-disabled: true
 
-      - name: Compile DUWM
+      - name: Show project configuration
         shell: bash
         run: |
           set -euo pipefail
+
           cd "$PROJECT_DIR"
-          gradle --no-daemon --no-configuration-cache \
+
+          echo "PROJECT ROOT:"
+          pwd
+
+          echo "PROJECT FILES:"
+          ls -la
+
+          echo "APP FILES:"
+          ls -la app
+
+          echo "GRADLE VERSION:"
+          gradle --version
+
+      - name: Compile DUWM Java
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$PROJECT_DIR"
+
+          gradle \
+            --no-daemon \
+            --no-configuration-cache \
             :app:compileDebugJavaWithJavac \
+            --stacktrace
+
+      - name: Process Android resources
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$PROJECT_DIR"
+
+          gradle \
+            --no-daemon \
+            --no-configuration-cache \
             :app:processDebugResources \
+            --stacktrace
+
+      - name: Assemble DUWM APK
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd "$PROJECT_DIR"
+
+          gradle \
+            --no-daemon \
+            --no-configuration-cache \
             :app:assembleDebug \
             --stacktrace
 
-      - name: Verify APK
+      - name: Locate and verify APK
         shell: bash
         run: |
           set -euo pipefail
-          APK="$(find "$PROJECT_DIR/app/build/outputs/apk/debug" \
-            -type f -name "*.apk" | head -n 1)"
-          test -n "$APK"
-          test -s "$APK"
+
+          echo "Searching for generated APK..."
+
+          find "$PROJECT_DIR/app/build/outputs" \
+            -type f \
+            -name "*.apk" \
+            -print
+
+          APK="$(find "$PROJECT_DIR/app/build/outputs/apk" \
+            -type f \
+            -name "*.apk" \
+            | head -n 1)"
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK NOT FOUND"
+            exit 1
+          fi
+
+          if [ ! -s "$APK" ]; then
+            echo "ERROR: APK IS EMPTY"
+            exit 1
+          fi
+
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+
+          echo "APK VERIFIED:"
           ls -lh "$APK"
+
+          sha256sum "$APK"
 
       - name: Upload DUWM APK
         uses: actions/upload-artifact@v4
