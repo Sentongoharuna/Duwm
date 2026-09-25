@@ -1,0 +1,48 @@
+name: DUWM STEP12 FIX2 GREEN REPAIR AUTO APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+permissions:
+  contents: read
+concurrency:
+  group: duwm-step12-fix2-main
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract and verify FIX2
+        run: |
+          set -euo pipefail
+          echo "37109e1ee6f14deeb8fc23493b5e3d19c4c3c91aaea0ece3ef9d1c94c2a22650  DUWM-LIVE-CORE-2-STEP12-FIX2-GREEN-REPAIR-SOURCE.tar.gz" | sha256sum -c -
+          rm -rf "$RUNNER_TEMP/duwm";mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-LIVE-CORE-2-STEP12-FIX2-GREEN-REPAIR-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm" >> "$GITHUB_ENV"
+          chmod +x "$RUNNER_TEMP/duwm/scripts/verify-step12-state-parity.sh" "$RUNNER_TEMP/duwm/scripts/verify-step12-fix2.sh"
+          "$RUNNER_TEMP/duwm/scripts/verify-step12-state-parity.sh" "$RUNNER_TEMP/duwm"
+          "$RUNNER_TEMP/duwm/scripts/verify-step12-fix2.sh" "$RUNNER_TEMP/duwm"
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - name: Android SDK
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}";test -d "$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV";echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.13", cache-disabled: true}
+      - name: Compile Java gate
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Assemble APK gate
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage APK
+        run: |
+          APK="$(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name '*.apk' -print -quit)"
+          test -s "$APK";mkdir -p "$RUNNER_TEMP/release"
+          cp "$APK" "$RUNNER_TEMP/release/DUWM-STEP12-FIX2.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-STEP12-FIX2-APK
+          path: ${{ runner.temp }}/release/DUWM-STEP12-FIX2.apk
+          if-no-files-found: error
