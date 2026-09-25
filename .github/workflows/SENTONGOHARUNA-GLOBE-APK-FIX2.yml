@@ -1,0 +1,63 @@
+name: SENTONGOHARUNA GLOBE APK FIX2
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/SENTONGOHARUNA-GLOBE-APK-FIX2.yml"
+      - "SENTONGOHARUNA-GLOBE-SOURCE-FIX2.tar.gz"
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Build Globe APK FIX2
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source
+        run: |
+          set -euo pipefail
+          test -s SENTONGOHARUNA-GLOBE-SOURCE-FIX2.tar.gz
+          echo "fee26e9c8d83e0c38b94103491f8a0bf5d6591d624844a728b63e8784cb18e45  SENTONGOHARUNA-GLOBE-SOURCE-FIX2.tar.gz" | sha256sum -c -
+      - name: Extract source
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf SENTONGOHARUNA-GLOBE-SOURCE-FIX2.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm/world-situation-room-native-globe-only-1" >> "$GITHUB_ENV"
+      - name: Reject invented handlers
+        run: |
+          set -euo pipefail
+          ! grep -R 'toggleSearchPanel()' "$PROJECT_DIR/app/src/main/java"
+          ! grep -R 'toggleLayerPanel()' "$PROJECT_DIR/app/src/main/java"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: Verify Globe-only contract
+        run: |
+          chmod +x "$PROJECT_DIR/scripts/verify-globe-only-rule.sh"
+          "$PROJECT_DIR/scripts/verify-globe-only-rule.sh" "$PROJECT_DIR"
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Assemble APK
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage APK
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk")
+          test "${#APKS[@]}" -eq 1
+          test -s "${APKS[0]}"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${APKS[0]}" "$RUNNER_TEMP/release/SENTONGOHARUNA-GLOBE-FIX2.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SENTONGOHARUNA-GLOBE-FIX2-APK
+          path: ${{ runner.temp }}/release/SENTONGOHARUNA-GLOBE-FIX2.apk
+          if-no-files-found: error
+          retention-days: 14
