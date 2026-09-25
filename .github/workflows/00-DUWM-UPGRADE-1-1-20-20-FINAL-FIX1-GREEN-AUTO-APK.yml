@@ -1,0 +1,64 @@
+name: DUWM UPGRADE 1.1 20-20 FINAL FIX1 GREEN AUTO APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+permissions:
+  contents: read
+concurrency:
+  group: duwm-upgrade-1-1-final-fix1-main
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract exact FIX1 source
+        run: |
+          set -euo pipefail
+          echo "7c409322df3d21517296d2d9194758da8eb5436cb21f45e4b19df0e8bd9996a7  DUWM-UPGRADE-1-1-20-20-FINAL-FIX1-SOURCE.tar.gz" | sha256sum -c -
+          rm -rf "$RUNNER_TEMP/duwm"; mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-UPGRADE-1-1-20-20-FINAL-FIX1-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm" >> "$GITHUB_ENV"
+      - name: Run all Upgrade 1.1 gates
+        run: |
+          set -euo pipefail
+          chmod +x "$PROJECT_DIR/scripts/"*.sh
+          "$PROJECT_DIR/scripts/verify-step12-fix2.sh" "$PROJECT_DIR"
+          "$PROJECT_DIR/scripts/verify-upgrade-1-1-20-18-regressions.sh" "$PROJECT_DIR"
+          "$PROJECT_DIR/scripts/verify-upgrade-1-1-20-19-ui-contract.sh" "$PROJECT_DIR"
+          "$PROJECT_DIR/scripts/verify-upgrade-1-1-20-20-final.sh" "$PROJECT_DIR"
+          "$PROJECT_DIR/scripts/verify-upgrade-1-1-20-20-warning-fix.sh" "$PROJECT_DIR"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: Java compile green gate
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: APK assemble green gate
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage exactly one APK
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name '*.apk')
+          test "${#APKS[@]}" -eq 1
+          test -s "${APKS[0]}"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${APKS[0]}" "$RUNNER_TEMP/release/DUWM-UPGRADE-1-1-FINAL-FIX1.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-UPGRADE-1-1-FINAL-FIX1-APK
+          path: ${{ runner.temp }}/release/DUWM-UPGRADE-1-1-FINAL-FIX1.apk
+          if-no-files-found: error
+          retention-days: 14
