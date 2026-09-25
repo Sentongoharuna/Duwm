@@ -1,0 +1,48 @@
+name: DUWM CLEAN COMPILE REPAIR APK
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and extract compile-repair source
+        run: |
+          set -euo pipefail
+          echo "cd1673420d688d88f255f6e15dd95506b39d9646b06df3c49addd74d7d3884ef  DUWM-CLEAN-COMPILE-REPAIR-SOURCE.tar.gz" | sha256sum -c -
+          rm -rf "$RUNNER_TEMP/duwm"; mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-CLEAN-COMPILE-REPAIR-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm" >> "$GITHUB_ENV"
+          chmod +x "$RUNNER_TEMP/duwm/scripts/verify-compile-repair.sh"
+          "$RUNNER_TEMP/duwm/scripts/verify-compile-repair.sh" "$RUNNER_TEMP/duwm"
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - name: Locate Android SDK
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"; test -d "$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"; echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.13", cache-disabled: true}
+      - name: Compile all DUWM Java
+        run: |
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Assemble complete DUWM APK
+        run: |
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Verify APK
+        run: |
+          set -euo pipefail
+          APK="$(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk" -print -quit)"
+          test -n "$APK"; test -s "$APK"; echo "APK_PATH=$APK" >> "$GITHUB_ENV"; ls -lh "$APK"
+      - name: Upload DUWM Compile Repair APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-CLEAN-COMPILE-REPAIR-APK
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
+          retention-days: 14
