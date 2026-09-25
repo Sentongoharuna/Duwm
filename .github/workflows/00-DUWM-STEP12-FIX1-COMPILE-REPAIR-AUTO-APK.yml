@@ -1,0 +1,62 @@
+name: DUWM LIVE CORE 2 STEP12 FIX1 COMPILE REPAIR AUTO APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+permissions:
+  contents: read
+concurrency:
+  group: duwm-step12-fix1-main
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract and verify repaired Step12
+        run: |
+          set -euo pipefail
+          echo "288ecdec5dce9b98ecbce4eec9f74b0429dc67a2d12893ce3d70db9458e00ba8  DUWM-LIVE-CORE-2-STEP12-FIX1-COMPILE-REPAIR-SOURCE.tar.gz" | sha256sum -c -
+          rm -rf "$RUNNER_TEMP/duwm"; mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-LIVE-CORE-2-STEP12-FIX1-COMPILE-REPAIR-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm" >> "$GITHUB_ENV"
+          chmod +x "$RUNNER_TEMP/duwm/scripts/verify-step12-state-parity.sh" "$RUNNER_TEMP/duwm/scripts/verify-step12-compile-repair.sh"
+          "$RUNNER_TEMP/duwm/scripts/verify-step12-state-parity.sh" "$RUNNER_TEMP/duwm"
+          "$RUNNER_TEMP/duwm/scripts/verify-step12-compile-repair.sh" "$RUNNER_TEMP/duwm"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: Compile Java gate
+        run: |
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Assemble APK gate
+        run: |
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage one APK
+        run: |
+          set -euo pipefail
+          APK="$(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name '*.apk' -print -quit)"
+          test -n "$APK"; test -s "$APK"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "$APK" "$RUNNER_TEMP/release/DUWM-STEP12-FIX1-COMPILE-REPAIR.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-STEP12-FIX1-COMPILE-REPAIR-APK
+          path: ${{ runner.temp }}/release/DUWM-STEP12-FIX1-COMPILE-REPAIR.apk
+          if-no-files-found: error
+          retention-days: 14
