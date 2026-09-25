@@ -1,0 +1,48 @@
+name: DUWM LIVE CORE 2 STEP12 STATE PARITY AUTO APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+permissions:
+  contents: read
+concurrency:
+  group: duwm-step12-main
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract and verify Step12
+        run: |
+          set -euo pipefail
+          echo "e3c3340806639145deb7b1455f92fcd15f0e1379bc91606898077df8513d1a08  DUWM-LIVE-CORE-2-STEP12-STATE-PARITY-SOURCE.tar.gz" | sha256sum -c -
+          rm -rf "$RUNNER_TEMP/duwm";mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-LIVE-CORE-2-STEP12-STATE-PARITY-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm" >> "$GITHUB_ENV"
+          chmod +x "$RUNNER_TEMP/duwm/scripts/verify-step11-runtime-qa.sh" "$RUNNER_TEMP/duwm/scripts/verify-step12-state-parity.sh"
+          "$RUNNER_TEMP/duwm/scripts/verify-step11-runtime-qa.sh" "$RUNNER_TEMP/duwm"
+          "$RUNNER_TEMP/duwm/scripts/verify-step12-state-parity.sh" "$RUNNER_TEMP/duwm"
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - name: Android SDK
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}";test -d "$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV";echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.13", cache-disabled: true}
+      - name: Compile and assemble
+        run: |
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+      - name: Stage APK
+        run: |
+          set -euo pipefail
+          APK="$(find "$PROJECT_DIR/app/build/outputs/apk" -name '*.apk' -print -quit)";test -s "$APK"
+          mkdir -p "$RUNNER_TEMP/release";cp "$APK" "$RUNNER_TEMP/release/DUWM-STEP12-STATE-PARITY.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-LIVE-CORE-2-STEP12-APK
+          path: ${{ runner.temp }}/release/DUWM-STEP12-STATE-PARITY.apk
+          if-no-files-found: error
