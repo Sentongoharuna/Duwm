@@ -1,0 +1,95 @@
+name: sentongoharuna - Globe Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/sentongoharuna-globe-build.yml"
+      - "sentongoharuna-source-01.txt"
+      - "sentongoharuna-source-02.txt"
+      - "sentongoharuna-source-03.txt"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sentongoharuna-globe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reassemble exact Globe source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat sentongoharuna-source-01.txt sentongoharuna-source-02.txt sentongoharuna-source-03.txt > "$RUNNER_TEMP/source.b64"
+          base64 --decode "$RUNNER_TEMP/source.b64" > "$RUNNER_TEMP/source.tar.gz"
+          echo "0833899275ba04b30dcf06f429b59e4c3ece21bf29726d94326ee90ec7bd0a6f  $RUNNER_TEMP/source.tar.gz" | sha256sum --check --strict -
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf "$RUNNER_TEMP/source.tar.gz" -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm/world-situation-room-native-globe-only-1" >> "$GITHUB_ENV"
+
+      - name: Globe-only contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x "$PROJECT_DIR/scripts/verify-globe-only-rule.sh"
+          "$PROJECT_DIR/scripts/verify-globe-only-rule.sh" "$PROJECT_DIR"
+          if [ -s "$PROJECT_DIR/GLOBE_BASE_HASHES.sha256" ]; then
+            cd "$PROJECT_DIR"
+            sha256sum -c GLOBE_BASE_HASHES.sha256
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${{ANDROID_SDK_ROOT:-${{ANDROID_HOME:-/usr/local/lib/android/sdk}}}}"
+          test -d "$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+
+      - name: Lint
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:lintDebug --stacktrace
+
+      - name: Assemble APK
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+
+      - name: Stage exactly one APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name '*.apk')
+          test "${#APKS[@]}" -eq 1
+          test -s "${APKS[0]}"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${APKS[0]}" "$RUNNER_TEMP/release/sentongoharuna-globe.apk"
+          sha256sum "$RUNNER_TEMP/release/sentongoharuna-globe.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sentongoharuna-globe-APK
+          path: ${{ runner.temp }}/release/sentongoharuna-globe.apk
+          if-no-files-found: error
+          retention-days: 14
