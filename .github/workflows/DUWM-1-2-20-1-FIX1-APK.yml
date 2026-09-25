@@ -1,0 +1,56 @@
+name: DUWM 1.2-20-1 FIX1 APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/DUWM-1-2-20-1-FIX1-APK.yml"
+      - "DUWM-1-2-20-1-FIX1-SOURCE.tar.gz"
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Build 1.2-20-1 FIX1 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact source
+        run: |
+          set -euo pipefail
+          test -s DUWM-1-2-20-1-FIX1-SOURCE.tar.gz
+          echo "099e36897c10cebb5274379ceba97c096daf3aa0aea61ec266e63290bd508f52  DUWM-1-2-20-1-FIX1-SOURCE.tar.gz" | sha256sum -c -
+      - name: Extract
+        run: |
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-1-FIX1-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm/world-situation-room-native-1-2-20-1-fix1" >> "$GITHUB_ENV"
+      - name: FIX1 regression gate
+        run: |
+          chmod +x "$PROJECT_DIR/scripts/"*.sh
+          "$PROJECT_DIR/scripts/verify-1-2-20-1-fix1.sh" "$PROJECT_DIR"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Assemble
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage APK
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk")
+          test "${#APKS[@]}" -eq 1
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${APKS[0]}" "$RUNNER_TEMP/release/DUWM-1-2-20-1-FIX1.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1-2-20-1-FIX1-APK
+          path: ${{ runner.temp }}/release/DUWM-1-2-20-1-FIX1.apk
+          if-no-files-found: error
+          retention-days: 14
