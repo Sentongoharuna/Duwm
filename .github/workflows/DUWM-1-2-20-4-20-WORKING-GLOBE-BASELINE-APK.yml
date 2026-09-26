@@ -1,0 +1,44 @@
+name: DUWM 1.2-20-4-20 WORKING GLOBE BASELINE APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [".github/workflows/DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-APK.yml", "DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-SOURCE.tar.gz"]
+permissions: {contents: read}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact pre-4.19A continuation source
+        run: echo "ac596b95523b49d97be4da426da2db9fc70f7323238ca4aff92d83bc89de1384  DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-SOURCE.tar.gz" | sha256sum -c -
+      - name: Extract
+        run: |
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm/world-situation-room-native-1-2-20-4-20-WORKING-GLOBE-BASELINE" >> "$GITHUB_ENV"
+      - name: Working Globe Baseline Gate
+        run: chmod +x "$PROJECT_DIR/scripts/"*.sh && "$PROJECT_DIR/scripts/verify-1-2-20-4-20-working-globe-baseline.sh" "$PROJECT_DIR"
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.13", cache-disabled: true}
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Lint
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:lintDebug --stacktrace
+      - name: Assemble
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage exactly one APK
+        run: |
+          mapfile -t A < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk")
+          test "${#A[@]}" -eq 1 && test -s "${A[0]}"
+          test "$(head -c 2 "${A[0]}")" = "PK"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${A[0]}" "$RUNNER_TEMP/release/DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-APK
+          path: ${{ runner.temp }}/release/DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE.apk
+          if-no-files-found: error
