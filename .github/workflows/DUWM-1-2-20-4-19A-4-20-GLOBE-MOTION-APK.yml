@@ -1,0 +1,50 @@
+name: DUWM 1.2-20-4-19A-4-20 GLOBE MOTION APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/DUWM-1-2-20-4-19A-4-20-GLOBE-MOTION-APK.yml"
+      - "DUWM-1-2-20-4-19A-4-20-GLOBE-MOTION-SOURCE.tar.gz"
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact source
+        run: echo "4e2f4c7821958cd79d6b72f44007664b9582e88af8c12dec01d831ced48424f5  DUWM-1-2-20-4-19A-4-20-GLOBE-MOTION-SOURCE.tar.gz" | sha256sum -c -
+      - name: Extract
+        run: |
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-4-19A-4-20-GLOBE-MOTION-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm/world-situation-room-native-1-2-20-4-19A-4-20-GLOBE-MOTION" >> "$GITHUB_ENV"
+      - name: Globe Motion Green Gate
+        run: chmod +x "$PROJECT_DIR/scripts/"*.sh && "$PROJECT_DIR/scripts/verify-1-2-20-4-19A-4-20-globe-motion.sh" "$PROJECT_DIR"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Lint
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:lintDebug --stacktrace
+      - name: Assemble
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage exactly one APK
+        run: |
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk")
+          test "${#APKS[@]}" -eq 1 && test -s "${APKS[0]}"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${APKS[0]}" "$RUNNER_TEMP/release/DUWM-1-2-20-4-19A-4-20-GLOBE-MOTION.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1-2-20-4-19A-4-20-GLOBE-MOTION-APK
+          path: ${{ runner.temp }}/release/DUWM-1-2-20-4-19A-4-20-GLOBE-MOTION.apk
+          if-no-files-found: error
