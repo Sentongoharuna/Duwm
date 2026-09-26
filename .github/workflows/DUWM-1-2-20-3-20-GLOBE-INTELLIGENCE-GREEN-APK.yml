@@ -1,0 +1,62 @@
+name: DUWM 1.2-20-3-20 GLOBE INTELLIGENCE GREEN APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/DUWM-1-2-20-3-20-GLOBE-INTELLIGENCE-GREEN-APK.yml"
+      - "DUWM-1-2-20-3-20-GLOBE-INTELLIGENCE-GREEN-SOURCE.tar.gz"
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact source
+        run: |
+          set -euo pipefail
+          test -s DUWM-1-2-20-3-20-GLOBE-INTELLIGENCE-GREEN-SOURCE.tar.gz
+          echo "c739fbc19f8a993374ef97c6a3d2ca3783d8782fefca49296ad17be31dcbcaa6  DUWM-1-2-20-3-20-GLOBE-INTELLIGENCE-GREEN-SOURCE.tar.gz" | sha256sum -c -
+      - name: Extract
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-3-20-GLOBE-INTELLIGENCE-GREEN-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm/world-situation-room-native-1-2-20-3-20" >> "$GITHUB_ENV"
+      - name: Full Globe Intelligence green gate
+        run: |
+          set -euo pipefail
+          chmod +x "$PROJECT_DIR/scripts/"*.sh
+          "$PROJECT_DIR/scripts/verify-1-2-20-3-20-globe-intelligence-green.sh" "$PROJECT_DIR"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Lint
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:lintDebug --stacktrace
+      - name: Assemble
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Verify exactly one APK
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk")
+          test "${#APKS[@]}" -eq 1
+          test -s "${APKS[0]}"
+          test "$(head -c 2 "${APKS[0]}")" = "PK"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${APKS[0]}" "$RUNNER_TEMP/release/DUWM-1-2-20-3-20-GLOBE-INTELLIGENCE-GREEN.apk"
+          sha256sum "$RUNNER_TEMP/release/DUWM-1-2-20-3-20-GLOBE-INTELLIGENCE-GREEN.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1-2-20-3-20-GLOBE-INTELLIGENCE-GREEN-APK
+          path: ${{ runner.temp }}/release/DUWM-1-2-20-3-20-GLOBE-INTELLIGENCE-GREEN.apk
+          if-no-files-found: error
+          retention-days: 14
