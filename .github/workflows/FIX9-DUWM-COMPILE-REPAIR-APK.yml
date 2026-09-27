@@ -1,0 +1,73 @@
+name: FIX9 DUWM COMPILE REPAIR APK
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify exact FIX9 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "825bf9699efe12d34ccb48dcef1712ec24bbcedbfe2ec83ea8962404ced8382b  FIX9-DUWM-COMPILE-REPAIR-SOURCE.tar.gz" | sha256sum -c -
+      - name: Extract
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/duwm"; mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf FIX9-DUWM-COMPILE-REPAIR-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          PROJECT_DIR="$(find "$RUNNER_TEMP/duwm" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Locate Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n1)"
+          test -x "$SDKMANAGER"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+      - name: Android 36 packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache clean :app:assembleDebug --stacktrace
+      - name: Stage APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find "$PROJECT_DIR/app/build/outputs/apk/debug" -type f -name "*.apk" -print -quit)"
+          test -n "$APK" && test -s "$APK"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "$APK" "$RUNNER_TEMP/release/FIX9-DUWM-COMPILE-REPAIR.apk"
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FIX9-DUWM-COMPILE-REPAIR-APK
+          path: ${{ runner.temp }}/release/FIX9-DUWM-COMPILE-REPAIR.apk
+          if-no-files-found: error
