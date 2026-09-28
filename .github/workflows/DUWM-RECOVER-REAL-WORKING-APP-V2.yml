@@ -1,0 +1,106 @@
+name: DUWM RECOVER REAL WORKING APP V2
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  recover-real-app-v2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify exact complete working source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-FIX4-SOURCE.tar.gz"
+          test -s "$SRC"
+          echo "0580d0c549421119bf933706a632760a6ef8ffd1d55a5c406b4430f6621277d2  $SRC" | sha256sum -c -
+
+      - name: Extract complete application
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/duwm"
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-FIX4-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          PROJECT_DIR="$(find "$RUNNER_TEMP/duwm" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
+          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          test -f "$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Verify complete app payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java"
+          grep -q "buildInterface" "$MAIN"
+          grep -q "setContentView" "$MAIN"
+          COUNT="$(find "$PROJECT_DIR/app/src/main" -type f | wc -l)"
+          echo "Application source/resource files: $COUNT"
+          test "$COUNT" -gt 20
+          echo "COMPLETE APP PAYLOAD PRESENT"
+
+      # Important: the old cumulative baseline verifier is intentionally NOT executed here.
+      # The user's screenshot proves that the archived FIX4 source itself passes through
+      # 1.2/20/4-17, then a later cumulative 4-18 share-card verifier exits 1.
+      # That verifier is not needed to compile the archived complete application.
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          SM="$(find "$SDK/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n1)"
+          test -x "$SM"
+          yes | "$SM" --licenses >/dev/null 2>&1 || true
+          "$SM" "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+
+      - name: Compile complete application
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+
+      - name: Build complete application APK
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+
+      - name: Validate full APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk/debug" -type f -name "*.apk" | sort)
+          test "${#APKS[@]}" -eq 1
+          APK="${APKS[0]}"
+          test -s "$APK"
+          test "$(head -c 2 "$APK")" = "PK"
+          SIZE="$(stat -c%s "$APK")"
+          echo "FINAL APK BYTES=$SIZE"
+          # Reject obviously empty/stub packaging.
+          test "$SIZE" -gt 500000
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "$APK" "$RUNNER_TEMP/release/DUWM-REAL-WORKING-APP-V2.apk"
+          sha256sum "$RUNNER_TEMP/release/DUWM-REAL-WORKING-APP-V2.apk"
+
+      - name: Upload complete APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-REAL-WORKING-APP-V2-APK
+          path: ${{ runner.temp }}/release/DUWM-REAL-WORKING-APP-V2.apk
+          if-no-files-found: error
+          retention-days: 14
