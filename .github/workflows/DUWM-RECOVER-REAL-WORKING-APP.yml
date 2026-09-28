@@ -1,0 +1,94 @@
+name: DUWM RECOVER REAL WORKING APP
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  recover-real-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify the real working globe baseline source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-FIX4-SOURCE.tar.gz
+          echo "0580d0c549421119bf933706a632760a6ef8ffd1d55a5c406b4430f6621277d2  DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-FIX4-SOURCE.tar.gz" | sha256sum -c -
+
+      - name: Extract complete working application
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/duwm"
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-FIX4-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          PROJECT_DIR="$(find "$RUNNER_TEMP/duwm" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
+          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          test -f "$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Verify full original UI is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java"
+          grep -q "buildInterface" "$MAIN"
+          grep -q "setContentView" "$MAIN"
+          test "$(find "$PROJECT_DIR/app/src/main" -type f | wc -l)" -gt 20
+          echo "REAL WORKING APPLICATION SOURCE PRESENT"
+
+      - name: Working globe baseline gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x "$PROJECT_DIR/scripts/"*.sh
+          bash "$PROJECT_DIR/scripts/verify-1-2-20-4-20-working-globe-baseline-fix1.sh" "$PROJECT_DIR"
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+
+      - name: Compile real app
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+
+      - name: Lint real app
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:lintDebug --stacktrace
+
+      - name: Build real working APK
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+
+      - name: Validate and stage APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk" | sort)
+          test "${#APKS[@]}" -eq 1
+          test -s "${APKS[0]}"
+          test "$(head -c 2 "${APKS[0]}")" = "PK"
+          SIZE="$(stat -c%s "${APKS[0]}")"
+          echo "APK bytes: $SIZE"
+          test "$SIZE" -gt 500000
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${APKS[0]}" "$RUNNER_TEMP/release/DUWM-REAL-WORKING-APP-RECOVERY.apk"
+          sha256sum "$RUNNER_TEMP/release/DUWM-REAL-WORKING-APP-RECOVERY.apk"
+
+      - name: Upload real working APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-REAL-WORKING-APP-RECOVERY-APK
+          path: ${{ runner.temp }}/release/DUWM-REAL-WORKING-APP-RECOVERY.apk
+          if-no-files-found: error
+          retention-days: 14
