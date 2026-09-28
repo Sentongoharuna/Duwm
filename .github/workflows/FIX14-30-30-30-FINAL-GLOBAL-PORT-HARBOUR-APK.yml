@@ -1,0 +1,53 @@
+name: FIX14.30 30.30 FINAL GLOBAL PORT HARBOUR
+on: {workflow_dispatch: {}}
+permissions: {contents: read}
+jobs:
+  final-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify frozen source archive
+        run: echo "51c4129e7640c3b74d74935998a98bb34d8125fb6674213879b9ec899b240234  FIX14-30-30-30-FINAL-GLOBAL-PORT-HARBOUR-SOURCE.tar.gz" | sha256sum -c -
+      - name: Extract frozen cumulative source
+        run: |
+          set -euo pipefail; mkdir -p "$RUNNER_TEMP/duwm"; tar -xzf FIX14-30-30-30-FINAL-GLOBAL-PORT-HARBOUR-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"; P="$(find "$RUNNER_TEMP/duwm" -mindepth 1 -maxdepth 1 -type d | head -n1)"; echo "PROJECT_DIR=$P" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - name: FIX14 final manifest + load acceptance
+        run: |
+          mkdir -p "$RUNNER_TEMP/final"
+          javac -d "$RUNNER_TEMP/final" "$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/Fix14GlobalPortRelease.java" "$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/Fix14FinalAcceptance.java" "$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/PortTruthProvenanceAudit.java" "$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/PortLoadPerformanceHarness.java" "$PROJECT_DIR/fix14-tests/Fix14FinalAcceptanceSmoke.java"
+          java -cp "$RUNNER_TEMP/final" Fix14FinalAcceptanceSmoke
+      - name: Physical truth audit
+        run: python3 "$PROJECT_DIR/fix14-tests/port_truth_source_audit.py" "$PROJECT_DIR"
+      - name: Complete FIX14 source/runtime audit
+        run: python3 "$PROJECT_DIR/fix14-tests/fix14_final_source_audit.py" "$PROJECT_DIR"
+      - name: Verify protected final source hashes
+        run: |
+          python3 - "$PROJECT_DIR" <<'PY'
+          import json,hashlib,sys
+          from pathlib import Path
+          root=Path(sys.argv[1]); m=json.loads((root/"fix14-tests/FIX14_30_FINAL_SHA256.json").read_text()); bad=[]
+          for rel,want in m.items():
+              p=root/rel; got=hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else "MISSING"
+              if got!=want: bad.append(rel)
+          if bad: raise SystemExit("FINAL SHA mismatch: "+", ".join(bad))
+          print("FIX14.30 FINAL PROTECTED SHA PASS",len(m))
+          PY
+      - name: SDK
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"; echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"; echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"; SM="$(find "$SDK/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n1)"; echo "SDKMANAGER=$SM" >> "$GITHUB_ENV"
+      - run: yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true; "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.13", cache-disabled: true}
+      - name: Build final FIX14 APK
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache clean :app:assembleDebug --stacktrace
+      - name: Stage exactly one final APK
+        run: |
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk/debug" -type f -name "*.apk" | sort); test "${#APKS[@]}" -eq 1; test -s "${APKS[0]}"; mkdir -p "$RUNNER_TEMP/release"; cp "${APKS[0]}" "$RUNNER_TEMP/release/FIX14-30-30-30-FINAL-GLOBAL-PORT-HARBOUR.apk"; sha256sum "$RUNNER_TEMP/release/"*.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FIX14-30-30-30-FINAL-GLOBAL-PORT-HARBOUR-APK
+          path: ${{ runner.temp }}/release/FIX14-30-30-30-FINAL-GLOBAL-PORT-HARBOUR.apk
+          if-no-files-found: error
