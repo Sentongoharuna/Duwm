@@ -1,0 +1,90 @@
+name: DUWM RECOVER REAL WORKING APP V3
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recover-real-app-v3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact complete source
+        run: |
+          set -euo pipefail
+          SRC="DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-FIX4-SOURCE.tar.gz"
+          test -s "$SRC"
+          echo "0580d0c549421119bf933706a632760a6ef8ffd1d55a5c406b4430f6621277d2  $SRC" | sha256sum -c -
+      - name: Extract complete application
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/duwm"; mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-FIX4-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          PROJECT_DIR="$(find "$RUNNER_TEMP/duwm" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+          test -f "$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+      - name: Repair only missing distanceKm helper
+        run: |
+          set -euo pipefail
+          MAIN="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java"
+          grep -q 'distanceKm(signal.latitude,signal.longitude,z.latitude,z.longitude)' "$MAIN"
+          if ! grep -q 'double distanceKm(double lat1,double lon1,double lat2,double lon2)' "$MAIN"; then
+            python3 - "$MAIN" <<'PY'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1]); s=p.read_text(); pos=s.rfind("\n}")
+          helper='''\n    private static double distanceKm(double lat1,double lon1,double lat2,double lon2) {
+              final double earthKm=6371.0088d;
+              double p1=Math.toRadians(lat1), p2=Math.toRadians(lat2);
+              double dp=Math.toRadians(lat2-lat1), dl=Math.toRadians(lon2-lon1);
+              double a=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2);
+              return earthKm*2.0d*Math.atan2(Math.sqrt(a),Math.sqrt(1.0d-a));
+          }
+          '''
+          if pos < 0: raise SystemExit("class closing brace missing")
+          p.write_text(s[:pos]+helper+s[pos:])
+          PY
+          fi
+          grep -q 'double distanceKm(double lat1,double lon1,double lat2,double lon2)' "$MAIN"
+          echo "MISSING DISTANCEKM HELPER REPAIRED; UI UNCHANGED"
+      - name: Verify full app payload
+        run: |
+          set -euo pipefail
+          MAIN="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java"
+          grep -q buildInterface "$MAIN"
+          grep -q setContentView "$MAIN"
+          COUNT="$(find "$PROJECT_DIR/app/src/main" -type f | wc -l)"
+          echo "APP FILE COUNT=$COUNT"
+          test "$COUNT" -gt 20
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SM="$(find "$SDK/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n1)"
+          yes | "$SM" --licenses >/dev/null 2>&1 || true
+          "$SM" "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: Compile complete app
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Build complete APK
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage full APK
+        run: |
+          set -euo pipefail
+          mapfile -t A < <(find "$PROJECT_DIR/app/build/outputs/apk/debug" -type f -name "*.apk" | sort)
+          test "${#A[@]}" -eq 1
+          test -s "${A[0]}"
+          SIZE="$(stat -c%s "${A[0]}")"; echo "APK BYTES=$SIZE"; test "$SIZE" -gt 500000
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${A[0]}" "$RUNNER_TEMP/release/DUWM-REAL-WORKING-APP-V3.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-REAL-WORKING-APP-V3-APK
+          path: ${{ runner.temp }}/release/DUWM-REAL-WORKING-APP-V3.apk
+          if-no-files-found: error
