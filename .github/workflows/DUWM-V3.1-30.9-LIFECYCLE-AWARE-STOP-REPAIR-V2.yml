@@ -1,0 +1,197 @@
+name: DUWM V3.1 30.9 LIFECYCLE AWARE STOP REPAIR V2
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify frozen working V3 source
+        run: |
+          set -euo pipefail
+          SRC=DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-FIX4-SOURCE.tar.gz
+          test -s "$SRC"
+          echo "0580d0c549421119bf933706a632760a6ef8ffd1d55a5c406b4430f6621277d2  $SRC" | sha256sum -c -
+      - name: Extract V3
+        run: |
+          rm -rf "$RUNNER_TEMP/duwm"; mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-4-20-WORKING-GLOBE-BASELINE-FIX4-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          P="$(find "$RUNNER_TEMP/duwm" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+          echo "PROJECT_DIR=$P" >> "$GITHUB_ENV"
+      - name: Apply V3 repair plus V3.1 30.1 and 30.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$PROJECT_DIR" <<'PY'
+          from pathlib import Path
+          import re,sys
+          root=Path(sys.argv[1])
+          main=root/"app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java"
+          s=main.read_text()
+          if "double distanceKm(double lat1,double lon1,double lat2,double lon2)" not in s:
+              pos=s.rfind("\n}")
+              helper="\n    private static double distanceKm(double lat1,double lon1,double lat2,double lon2) {\n        final double r=6371.0088d; double p1=Math.toRadians(lat1),p2=Math.toRadians(lat2),dp=Math.toRadians(lat2-lat1),dl=Math.toRadians(lon2-lon1); double a=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)*Math.sin(dl/2); return r*2.0d*Math.atan2(Math.sqrt(a),Math.sqrt(1.0d-a));\n    }\n"
+              if pos<0: raise SystemExit("MainActivity closing brace missing")
+              main.write_text(s[:pos]+helper+s[pos:])
+
+          mp=root/"app/src/main/java/com/sentongoharuna/worldsituationroom/SatelliteMapView.java"
+          s=mp.read_text()
+          candidates=["centerLongitude","centerLon","longitudeOffset","rotationLongitude","globeLongitude","cameraLongitude","lonOffset"]
+          state=next((x for x in candidates if re.search(r"\b"+re.escape(x)+r"\b",s)),None)
+          if not state:
+              m=re.search(r"\b(?:double|float)\s+([A-Za-z_][A-Za-z0-9_]*(?:Lon|Longitude)[A-Za-z0-9_]*)\b",s,re.I)
+              state=m.group(1) if m else None
+          if not state: raise SystemExit("No existing globe longitude state; refusing fake animation")
+          cp=s.find("{",s.find("class SatelliteMapView"))
+          engine="\n    // V3.1/30.1 REAL CONTINUOUS EARTH ROTATION + V3.1/30.2 FRAME SYNCHRONISED + V3.1/30.3 DELTA TIME + V3.1/30.4 DEGREES-PER-SECOND GOVERNOR + V3.1/30.5 NEWSROOM DEFAULT + V3.1/30.6 IMMEDIATE FIRST MOVEMENT + V3.1/30.7 SINGLE LOOP OWNERSHIP + V3.1/30.8 LIFECYCLE AWARE START + V3.1/30.9 LIFECYCLE AWARE STOP\n    private static final double V315_NEWSROOM_DEFAULT_DEG_PER_SECOND=1.20d;\n    private static final double V315_FULL_ROTATION_SECONDS=300.0d;\n    private static final double V31_DEFAULT_DEG_PER_SECOND=V315_NEWSROOM_DEFAULT_DEG_PER_SECOND;\n    private static final double V314_MIN_DEG_PER_SECOND=0.25d;\n    private static final double V314_MAX_DEG_PER_SECOND=12.0d;\n    private double v314RequestedDegPerSecond=V31_DEFAULT_DEG_PER_SECOND;\n    private double v314ActualDegPerSecond=V31_DEFAULT_DEG_PER_SECOND;\n    private boolean v31Running;\n    private long v31LastFrameNanos;\n    private long v313FrameCount,v313RejectedFrameCount,v313ClampedFrameCount;\n    private double v313IntegratedSeconds,v313IntegratedDegrees;\n    private long v316StartNanos,v316FirstMovementNanos;\n    private boolean v316FirstMovementApplied;\n    private long v317LoopGeneration;\n    private long v317ActiveGeneration;\n    private boolean v317FramePosted;\n    private long v317StartRequestCount,v317DuplicateStartCount,v317StopCount;\n    private boolean v318Attached,v318WindowVisible,v318AggregatedVisible;\n    private long v318EligibleStartCount,v318IneligibleStartCount;\n    private static final int V319_STOP_NONE=0,V319_STOP_DETACHED=1,V319_STOP_WINDOW_HIDDEN=2,V319_STOP_VIEW_HIDDEN=3,V319_STOP_NOT_SHOWN=4;\n    private int v319LastStopReason=V319_STOP_NONE;\n    private long v319LifecycleStopCount,v319StaleFrameRejectCount;\n    private final android.view.Choreographer.FrameCallback v31Frame=new android.view.Choreographer.FrameCallback(){ public void doFrame(long frameTimeNanos){ v317FramePosted=false; final long callbackGeneration=v317ActiveGeneration; if(!v31Running||!v318CanRotate()||callbackGeneration!=v317LoopGeneration){ v319StaleFrameRejectCount++; return; } if(v31LastFrameNanos==0L){ v31LastFrameNanos=frameTimeNanos; if(!v316FirstMovementApplied){ double firstDt=Math.min(1.0d/60.0d,0.100d); v314ActualDegPerSecond=Math.max(V314_MIN_DEG_PER_SECOND,Math.min(V314_MAX_DEG_PER_SECOND,v314RequestedDegPerSecond)); double firstDegrees=v314ActualDegPerSecond*firstDt; "+state+"=("+state+"+firstDegrees); while("+state+">=180.0d) "+state+"-=360.0d; while("+state+"< -180.0d) "+state+"+=360.0d; v313FrameCount++; v313IntegratedSeconds+=firstDt; v313IntegratedDegrees+=firstDegrees; v316FirstMovementApplied=true; v316FirstMovementNanos=frameTimeNanos; invalidate(); } v317PostNextFrame(); return; } if(v31LastFrameNanos!=0L){ long deltaNanos=frameTimeNanos-v31LastFrameNanos; if(deltaNanos<=0L){ v313RejectedFrameCount++; v31LastFrameNanos=frameTimeNanos; v317PostNextFrame(); return; } double rawDt=deltaNanos/1000000000.0d; if(rawDt>0.100d)v313ClampedFrameCount++; double dt=Math.min(rawDt,0.100d); v313FrameCount++; v313IntegratedSeconds+=dt; v314ActualDegPerSecond=Math.max(V314_MIN_DEG_PER_SECOND,Math.min(V314_MAX_DEG_PER_SECOND,v314RequestedDegPerSecond)); double frameDegrees=v314ActualDegPerSecond*dt; v313IntegratedDegrees+=frameDegrees; "+state+"=("+state+"+frameDegrees); while("+state+">=180.0d) "+state+"-=360.0d; while("+state+"< -180.0d) "+state+"+=360.0d; invalidate(); } v31LastFrameNanos=frameTimeNanos; v317PostNextFrame(); }};\n    private boolean v318CanRotate(){ return v318Attached&&v318WindowVisible&&v318AggregatedVisible&&isShown()&&getWindowVisibility()==android.view.View.VISIBLE; }\n    private int v319StopReason(){ if(!v318Attached)return V319_STOP_DETACHED; if(!v318WindowVisible||getWindowVisibility()!=android.view.View.VISIBLE)return V319_STOP_WINDOW_HIDDEN; if(!v318AggregatedVisible)return V319_STOP_VIEW_HIDDEN; if(!isShown())return V319_STOP_NOT_SHOWN; return V319_STOP_NONE; }\n    private void v318ReconcileRotation(){ int reason=v319StopReason(); if(reason==V319_STOP_NONE){ v318EligibleStartCount++; v319LastStopReason=V319_STOP_NONE; v31Start(); } else { v318IneligibleStartCount++; v319LastStopReason=reason; v319LifecycleStopCount++; v31Stop(); } }\n    private void v317PostNextFrame(){ if(!v31Running||v317FramePosted||!v318CanRotate()) return; v317FramePosted=true; android.view.Choreographer.getInstance().postFrameCallback(v31Frame); }\n    private void v31Start(){ v317StartRequestCount++; if(!v318CanRotate()){ v318IneligibleStartCount++; return; } if(v31Running){ v317DuplicateStartCount++; return; } v31Running=true; v317LoopGeneration++; v317ActiveGeneration=v317LoopGeneration; v317FramePosted=false; v31LastFrameNanos=0L; v313FrameCount=0L; v313RejectedFrameCount=0L; v313ClampedFrameCount=0L; v313IntegratedSeconds=0.0d; v313IntegratedDegrees=0.0d; v316StartNanos=android.os.SystemClock.elapsedRealtimeNanos(); v316FirstMovementNanos=0L; v316FirstMovementApplied=false; android.view.Choreographer.getInstance().removeFrameCallback(v31Frame); v317PostNextFrame(); }\n    private void v31Stop(){ if(!v31Running&&!v317FramePosted){ v31LastFrameNanos=0L; return; } v317StopCount++; v31Running=false; v317LoopGeneration++; v317ActiveGeneration=v317LoopGeneration; android.view.Choreographer.getInstance().removeFrameCallback(v31Frame); v317FramePosted=false; v31LastFrameNanos=0L; v316FirstMovementApplied=false; v316FirstMovementNanos=0L; }\n    public void setEarthRotationDegreesPerSecond(double requested){ if(Double.isNaN(requested)||Double.isInfinite(requested)) return; v314RequestedDegPerSecond=requested; v314ActualDegPerSecond=Math.max(V314_MIN_DEG_PER_SECOND,Math.min(V314_MAX_DEG_PER_SECOND,requested)); }\n    public double getEarthRotationDegreesPerSecond(){ return v314ActualDegPerSecond; }\n    @Override protected void onWindowVisibilityChanged(int visibility){ super.onWindowVisibilityChanged(visibility); v318WindowVisible=(visibility==android.view.View.VISIBLE); if(isAttachedToWindow()) v318Attached=true; v318AggregatedVisible=isShown(); v318ReconcileRotation(); }\n    @Override public void onVisibilityAggregated(boolean isVisible){ super.onVisibilityAggregated(isVisible); v318AggregatedVisible=isVisible; if(isAttachedToWindow()) v318Attached=true; v318WindowVisible=(getWindowVisibility()==android.view.View.VISIBLE); v318ReconcileRotation(); }\n    public void resetEarthRotationToNewsroomDefault(){ v314RequestedDegPerSecond=V315_NEWSROOM_DEFAULT_DEG_PER_SECOND; v314ActualDegPerSecond=V315_NEWSROOM_DEFAULT_DEG_PER_SECOND; }\n"
+          s=s[:cp+1]+engine+s[cp+1:]
+          if re.search(r"protected\s+void\s+onAttachedToWindow\s*\(\s*\)",s):
+              s=re.sub(r"(protected\s+void\s+onAttachedToWindow\s*\(\s*\)\s*\{)",r"\1\n        v318Attached=true; v318WindowVisible=(getWindowVisibility()==android.view.View.VISIBLE); v318AggregatedVisible=isShown(); v318ReconcileRotation();",s,count=1)
+          else:
+              pos=s.rfind("\n}"); s=s[:pos]+"\n    @Override protected void onAttachedToWindow(){ super.onAttachedToWindow(); v318Attached=true; v318WindowVisible=(getWindowVisibility()==android.view.View.VISIBLE); v318AggregatedVisible=isShown(); v318ReconcileRotation(); }\n"+s[pos:]
+          if re.search(r"protected\s+void\s+onDetachedFromWindow\s*\(\s*\)",s):
+              s=re.sub(r"(protected\s+void\s+onDetachedFromWindow\s*\(\s*\)\s*\{)",r"\1\n        v318Attached=false; v318WindowVisible=false; v318AggregatedVisible=false; v31Stop();",s,count=1)
+          else:
+              pos=s.rfind("\n}"); s=s[:pos]+"\n    @Override protected void onDetachedFromWindow(){ v318Attached=false; v318WindowVisible=false; v318AggregatedVisible=false; v31Stop(); super.onDetachedFromWindow(); }\n"+s[pos:]
+          mp.write_text(s)
+          (root/"V3_1_30_9_ROTATION_STATE.txt").write_text(state+"\n")
+          print("LIFECYCLE-STOP ROTATION STATE:",state)
+          PY
+      - name: V3.1 30.9 lifecycle-aware-stop source gate V2
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAP="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/SatelliteMapView.java"
+          check() { if ! grep -Fq -- "$1" "$MAP"; then echo "::error::Missing V3.1/30.9 contract: $1"; exit 1; fi; }
+          check "V3.1/30.9 LIFECYCLE AWARE STOP"
+          check "V319_STOP_DETACHED"
+          check "V319_STOP_WINDOW_HIDDEN"
+          check "V319_STOP_VIEW_HIDDEN"
+          check "V319_STOP_NOT_SHOWN"
+          check "v319StopReason"
+          check "v319LifecycleStopCount"
+          check "v319StaleFrameRejectCount"
+          check "removeFrameCallback(v31Frame)"
+          check "v318CanRotate"
+          check "v318ReconcileRotation"
+          check "v318Attached"
+          check "v318WindowVisible"
+          check "v318AggregatedVisible"
+          check "onWindowVisibilityChanged"
+          check "onVisibilityAggregated"
+          check "getWindowVisibility()==android.view.View.VISIBLE"
+          check "v317LoopGeneration"
+          check "v317ActiveGeneration"
+          check "v317FramePosted"
+          check "v317PostNextFrame"
+          check "v317DuplicateStartCount"
+          check "removeFrameCallback(v31Frame)"
+          check "v316FirstMovementApplied"
+          check "v316FirstMovementNanos"
+          check "firstDt=Math.min(1.0d/60.0d,0.100d)"
+          check "firstDegrees=v314ActualDegPerSecond*firstDt"
+          check "v316FirstMovementApplied=true"
+          check "V3.1/30.4 DEGREES-PER-SECOND GOVERNOR + V3.1/30.5 NEWSROOM DEFAULT"
+          check "V315_NEWSROOM_DEFAULT_DEG_PER_SECOND=1.20d"
+          check "V31_DEFAULT_DEG_PER_SECOND=V315_NEWSROOM_DEFAULT_DEG_PER_SECOND"
+          check "V314_MIN_DEG_PER_SECOND=0.25d"
+          check "V314_MAX_DEG_PER_SECOND=12.0d"
+          check "v314RequestedDegPerSecond"
+          check "v314ActualDegPerSecond"
+          check "setEarthRotationDegreesPerSecond"
+          check "getEarthRotationDegreesPerSecond"
+          check "long deltaNanos=frameTimeNanos-v31LastFrameNanos"
+          check "deltaNanos<=0L"
+          check "rawDt=deltaNanos/1000000000.0d"
+          check "Math.min(rawDt,0.100d)"
+          check "frameDegrees=v314ActualDegPerSecond*dt"
+          check "v313RejectedFrameCount"
+          check "v313ClampedFrameCount"
+          check "v313IntegratedDegrees"
+          check "Choreographer.FrameCallback"
+          check "frameTimeNanos-v31LastFrameNanos"
+          check "postFrameCallback"
+          check "removeFrameCallback"
+          check "invalidate()"
+          echo "ROTATION STATE=$(cat "$PROJECT_DIR/V3_1_30_9_ROTATION_STATE.txt")"
+          echo "V3.1/30.9 LIFECYCLE AWARE STOP SOURCE GATE V2 PASS"
+      - name: V3.1 30.9 lifecycle-stop functional acceptance
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          DETACHED=1; WINDOW=2; VIEW=3; NOT_SHOWN=4
+          class Engine:
+              def __init__(self):
+                  self.attached=self.window=self.visible=self.shown=False
+                  self.running=False; self.posted=False; self.gen=0
+                  self.stop_reason=0; self.stale=0; self.stops=0
+              def reason(self):
+                  if not self.attached:return DETACHED
+                  if not self.window:return WINDOW
+                  if not self.visible:return VIEW
+                  if not self.shown:return NOT_SHOWN
+                  return 0
+              def reconcile(self):
+                  r=self.reason(); self.stop_reason=r
+                  if r==0:
+                      if not self.running:
+                          self.running=True; self.gen+=1; self.posted=True
+                  else:self.stop()
+              def stop(self):
+                  if self.running or self.posted:self.stops+=1
+                  self.running=False; self.gen+=1; self.posted=False
+              def stale_callback(self,old_generation):
+                  if (not self.running) or old_generation!=self.gen:
+                      self.stale+=1; return False
+                  return True
+          e=Engine()
+          e.attached=e.window=e.visible=e.shown=True; e.reconcile()
+          assert e.running and e.posted
+          active=e.gen
+          # Window loss must stop immediately and invalidate old callback generation.
+          e.window=False; e.reconcile()
+          assert not e.running and not e.posted and e.stop_reason==WINDOW
+          assert not e.stale_callback(active) and e.stale==1
+          # Restart, then aggregated visibility loss.
+          e.window=True; e.reconcile(); assert e.running
+          e.visible=False; e.reconcile(); assert not e.running and e.stop_reason==VIEW
+          # Restart, then detach.
+          e.visible=True; e.reconcile(); assert e.running
+          e.attached=False; e.reconcile(); assert not e.running and e.stop_reason==DETACHED
+          # Hidden/isShown path.
+          e.attached=True; e.shown=False; e.reconcile(); assert e.stop_reason==NOT_SHOWN
+          print("V3.1/30.9 LIFECYCLE-AWARE STOP FUNCTIONAL ACCEPTANCE PASS")
+          print("lifecycle_stops=",e.stops,"stale_callbacks_rejected=",e.stale)
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SM="$(find "$SDK/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n1)"
+          yes | "$SM" --licenses >/dev/null 2>&1 || true
+          "$SM" "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Build APK
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage APK
+        run: |
+          mapfile -t A < <(find "$PROJECT_DIR/app/build/outputs/apk/debug" -type f -name "*.apk" | sort)
+          test "${#A[@]}" -eq 1; test -s "${A[0]}"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${A[0]}" "$RUNNER_TEMP/release/DUWM-V3.1-30.9-LIFECYCLE-AWARE-STOP-REPAIR-V2.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-V3.1-30.9-LIFECYCLE-AWARE-STOP-REPAIR-V2-APK
+          path: ${{ runner.temp }}/release/DUWM-V3.1-30.9-LIFECYCLE-AWARE-STOP-REPAIR-V2.apk
+          if-no-files-found: error
