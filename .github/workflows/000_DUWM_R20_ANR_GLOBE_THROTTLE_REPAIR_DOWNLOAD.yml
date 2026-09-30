@@ -1,0 +1,57 @@
+name: 000 DUWM R20 ANR GLOBE THROTTLE REPAIR AUTO APK
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_DIR="$(find . \( -name settings.gradle -o -name settings.gradle.kts \) -type f | head -1 | xargs dirname)"
+          test -n "$PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+      - name: R20 coalesce globe frame scheduling
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAP="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/SatelliteMapView.java"
+          test -s "$MAP"
+          python3 - "$MAP" <<'PY'
+          import pathlib,re,sys
+          p=pathlib.Path(sys.argv[1]); s=p.read_text()
+          if "r20FrameCallbackPending" not in s:
+              a=re.search(r'private\s+final\s+android\.view\.Choreographer\.FrameCallback\s+v31Frame\s*=',s)
+              if not a: raise SystemExit("R20: frame callback not found; source left unchanged")
+              s=s[:a.start()]+"private boolean r20FrameCallbackPending=false;\n"+s[a.start():]
+          s=re.sub(r'(public\s+void\s+doFrame\s*\(\s*long\s+frameTimeNanos\s*\)\s*\{)',
+                   r'\1 r20FrameCallbackPending=false;',s,count=1)
+          m=re.search(r'private\s+void\s+v317PostNextFrame\s*\(\s*\)\s*\{(?P<body>.*?)\}',s,re.S)
+          if m and "r20FrameCallbackPending" not in m.group("body"):
+              b=m.group("body").strip()
+              n="private void v317PostNextFrame(){ if(r20FrameCallbackPending) return; r20FrameCallbackPending=true; "+b+" }"
+              s=s[:m.start()]+n+s[m.end():]
+          p.write_text(s)
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Build APK
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug
+      - name: Stage APK
+        run: |
+          mkdir -p out
+          APK="$(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          cp "$APK" out/DUWM-R20-ANR-GLOBE-THROTTLE-REPAIR.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-R20-ANR-GLOBE-THROTTLE-REPAIR-APK
+          path: out/DUWM-R20-ANR-GLOBE-THROTTLE-REPAIR.apk
+          if-no-files-found: error
