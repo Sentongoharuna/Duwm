@@ -1,0 +1,145 @@
+name: "000 DUWM R25 DISTANCEKM COMPILE REPAIR"
+run-name: "000 DUWM R25 DISTANCEKM COMPILE REPAIR #${{ github.run_number }}"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Locate proven 4-19 working source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="$(find "$GITHUB_WORKSPACE" -type f -name 'DUWM-1-2-20-4-19-LIVE-INTELLIGENCE-FUNCTIONAL-REGRESSION-SOURCE.tar.gz' -print -quit)"
+          if [ -z "$SRC" ]; then
+            echo "::error::Required proven 4-19 source archive is missing from repository."
+            echo "::error::Upload DUWM-1-2-20-4-19-LIVE-INTELLIGENCE-FUNCTIONAL-REGRESSION-SOURCE.tar.gz to the repository."
+            exit 1
+          fi
+          echo "SOURCE_ARCHIVE=$SRC" >> "$GITHUB_ENV"
+          echo "Using proven working source: $SRC"
+
+      - name: Extract proven working source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$RUNNER_TEMP/duwm-r24"
+          mkdir -p "$RUNNER_TEMP/duwm-r24"
+          tar -xzf "$SOURCE_ARCHIVE" -C "$RUNNER_TEMP/duwm-r24"
+
+          SETTINGS="$(find "$RUNNER_TEMP/duwm-r24" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::Android settings.gradle/settings.gradle.kts not found in 4-19 archive."
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$SETTINGS")"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project: $PROJECT_DIR"
+
+      - name: Prove old native globe runtime is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAP="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/SatelliteMapView.java"
+          REPO="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/WorldDataRepository.java"
+          MAIN="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java"
+
+          test -s "$MAP"
+          test -s "$REPO"
+          test -s "$MAIN"
+
+          echo "SatelliteMapView lines: $(wc -l < "$MAP")"
+          echo "WorldDataRepository lines: $(wc -l < "$REPO")"
+          echo "MainActivity lines: $(wc -l < "$MAIN")"
+
+          # The later R21/R22/R23 scheduler must NOT be injected into this diagnostic.
+          if grep -q 'VR21_REDRAW_DELAY_MS\|r22AllowHeavyRender\|R23: open expensive projection work progressively' "$MAP"; then
+            echo "::error::Later R21/R22/R23 scheduler found inside supposed 4-19 working source."
+            exit 1
+          fi
+
+          echo "PASS: using native 4-19 globe scheduling with no R21/R22/R23 runtime injection."
+
+      - name: R25 restore missing distanceKm helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java"
+          test -s "$MAIN"
+          if ! grep -Eq 'distanceKm[[:space:]]*\([[:space:]]*double[[:space:]]+' "$MAIN"; then
+            sed -i '$d' "$MAIN"
+            printf '%s\n' \
+              '    private double distanceKm(double lat1, double lon1, double lat2, double lon2) {' \
+              '        final double r = 6371.0088d;' \
+              '        double dLat = Math.toRadians(lat2 - lat1);' \
+              '        double dLon = Math.toRadians(lon2 - lon1);' \
+              '        double a = Math.sin(dLat / 2.0d) * Math.sin(dLat / 2.0d)' \
+              '                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))' \
+              '                * Math.sin(dLon / 2.0d) * Math.sin(dLon / 2.0d);' \
+              '        return r * 2.0d * Math.atan2(Math.sqrt(a), Math.sqrt(1.0d - a));' \
+              '    }' \
+              '}' >> "$MAIN"
+          fi
+          grep -n "distanceKm" "$MAIN" | tail -n 5
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SM="$(find "$SDK/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n1)"
+          yes | "$SM" --licenses >/dev/null 2>&1 || true
+          "$SM" "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+
+      - name: Compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+
+      - name: Stage APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release"
+          mapfile -t A < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name '*.apk' | sort)
+          if [ "${#A[@]}" -eq 0 ]; then
+            echo "::error::No APK produced."
+            exit 1
+          fi
+          cp "${A[0]}" "$RUNNER_TEMP/release/DUWM-R24-FIX1-DISTANCEKM-COMPILE-REPAIR.apk"
+          ls -lh "$RUNNER_TEMP/release/DUWM-R24-FIX1-DISTANCEKM-COMPILE-REPAIR.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-R24-FIX1-DISTANCEKM-COMPILE-REPAIR-APK
+          path: ${{ runner.temp }}/release/DUWM-R24-FIX1-DISTANCEKM-COMPILE-REPAIR.apk
+          if-no-files-found: error
