@@ -1,0 +1,52 @@
+name: 000 DUWM R26 4-19 WORKING GLOBE RUNTIME RESTORE APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/000_DUWM_R26_419_WORKING_GLOBE_RUNTIME_RESTORE.yml"
+      - "DUWM-1-2-20-4-19-LIVE-INTELLIGENCE-FUNCTIONAL-REGRESSION-SOURCE.tar.gz"
+permissions: {contents: read}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact source
+        run: echo "f690bb78502f300d8c43b0f619e9e4702638e19f36952d11c704e806e355c3b3  DUWM-1-2-20-4-19-LIVE-INTELLIGENCE-FUNCTIONAL-REGRESSION-SOURCE.tar.gz" | sha256sum -c -
+      - name: Extract
+        run: |
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-4-19-LIVE-INTELLIGENCE-FUNCTIONAL-REGRESSION-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm/world-situation-room-native-1-2-20-4-19" >> "$GITHUB_ENV"
+      - name: Full Live Intelligence functional regression
+        run: |
+          set -euo pipefail
+          chmod +x "$PROJECT_DIR/scripts/"*.sh
+          "$PROJECT_DIR/scripts/verify-1-2-20-4-19-live-intelligence-functional-regression.sh" "$PROJECT_DIR"
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.13", cache-disabled: true}
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Lint
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:lintDebug --stacktrace
+      - name: Assemble
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage exactly one APK
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk")
+          test "${#APKS[@]}" -eq 1
+          test -s "${APKS[0]}"
+          test "$(head -c 2 "${APKS[0]}")" = "PK"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${APKS[0]}" "$RUNNER_TEMP/release/DUWM-R26-419-WORKING-GLOBE-RUNTIME-RESTORE.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-R26-419-WORKING-GLOBE-RUNTIME-RESTORE-APK
+          path: ${{ runner.temp }}/release/DUWM-R26-419-WORKING-GLOBE-RUNTIME-RESTORE.apk
+          if-no-files-found: error
+          retention-days: 14
