@@ -1,0 +1,88 @@
+name: 000 DUWM R26 FIX4 LINT NONBLOCKING APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/000_DUWM_R26_FIX4_LINT_NONBLOCKING.yml"
+      - "DUWM-1-2-20-4-19-LIVE-INTELLIGENCE-FUNCTIONAL-REGRESSION-SOURCE.tar.gz"
+permissions: {contents: read}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact source
+        run: echo "f690bb78502f300d8c43b0f619e9e4702638e19f36952d11c704e806e355c3b3  DUWM-1-2-20-4-19-LIVE-INTELLIGENCE-FUNCTIONAL-REGRESSION-SOURCE.tar.gz" | sha256sum -c -
+      - name: Extract
+        run: |
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-4-19-LIVE-INTELLIGENCE-FUNCTIONAL-REGRESSION-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm/world-situation-room-native-1-2-20-4-19" >> "$GITHUB_ENV"
+      - name: R26 FIX3 add missing distanceKm helper only
+        shell: bash
+        run: |
+          set -euo pipefail
+          MAIN="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java"
+          test -f "$MAIN"
+
+          if grep -Eq '(^|[[:space:]])(private|protected|public|static)[[:space:]].*distanceKm[[:space:]]*\(' "$MAIN"; then
+            echo "distanceKm helper already exists; no source patch needed."
+          else
+            python3 - "$MAIN" <<'PY'
+          import sys
+          from pathlib import Path
+
+          p = Path(sys.argv[1])
+          s = p.read_text()
+
+          pos = s.rfind("}")
+          if pos < 0:
+              raise SystemExit("MainActivity.java has no closing class brace")
+
+          helper = r"""
+              // R26 FIX3: compile repair only. Great-circle distance in kilometres.
+              private static double distanceKm(double lat1, double lon1, double lat2, double lon2) {
+                  final double earthRadiusKm = 6371.0088d;
+                  double dLat = Math.toRadians(lat2 - lat1);
+                  double dLon = Math.toRadians(lon2 - lon1);
+                  double a = Math.sin(dLat / 2.0d) * Math.sin(dLat / 2.0d)
+                          + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                          * Math.sin(dLon / 2.0d) * Math.sin(dLon / 2.0d);
+                  double c = 2.0d * Math.atan2(Math.sqrt(a), Math.sqrt(1.0d - a));
+                  return earthRadiusKm * c;
+              }
+          """
+          p.write_text(s[:pos] + helper + "\n" + s[pos:])
+          PY
+          fi
+
+          grep -n "distanceKm" "$MAIN" | tail -n 5
+
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: "17"}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: "8.13", cache-disabled: true}
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Lint diagnostic only
+        continue-on-error: true
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:lintDebug --stacktrace
+      - name: Assemble
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage exactly one APK
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk")
+          test "${#APKS[@]}" -eq 1
+          test -s "${APKS[0]}"
+          test "$(head -c 2 "${APKS[0]}")" = "PK"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${APKS[0]}" "$RUNNER_TEMP/release/DUWM-R26-FIX4-LINT-NONBLOCKING.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-R26-FIX4-LINT-NONBLOCKING-APK
+          path: ${{ runner.temp }}/release/DUWM-R26-FIX4-LINT-NONBLOCKING.apk
+          if-no-files-found: error
+          retention-days: 14
