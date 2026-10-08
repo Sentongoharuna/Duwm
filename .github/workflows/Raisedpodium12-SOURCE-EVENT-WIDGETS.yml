@@ -1,0 +1,504 @@
+name: Raisedpodium12 SOURCE EVENT WIDGETS
+run-name: "Raisedpodium12 #${{ github.run_number }}"
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/runningball2-live-wallpaper.yml"
+      - "DUWM-1-2-20-2-20-FULL-REGRESSION-FIX2-SOURCE.tar.gz"
+      - ".github/workflows/Raisedpodium12-SOURCE-EVENT-WIDGETS.yml"
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact source
+        run: |
+          set -euo pipefail
+          echo "1be8caba512b4fa2430f636fcfc6a4a73a1a484a9d3b64e829f3d3a606e7d32a  DUWM-1-2-20-2-20-FULL-REGRESSION-FIX2-SOURCE.tar.gz" | sha256sum -c -
+      - name: Extract
+        run: |
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-2-20-FULL-REGRESSION-FIX2-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm/world-situation-room-native-1-2-20-2-20" >> "$GITHUB_ENV"
+      - name: Full source-to-Globe regression gate
+        run: |
+          chmod +x "$PROJECT_DIR/scripts/"*.sh
+          "$PROJECT_DIR/scripts/verify-1-2-20-2-20-full-regression.sh" "$PROJECT_DIR"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: RUNNINGBALL2 add live wallpaper mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom"
+          RES="$PROJECT_DIR/app/src/main/res"
+          MANIFEST="$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          test -s "$PKG/SatelliteMapView.java"
+          test -s "$MANIFEST"
+          GLOBE_BEFORE="$(sha256sum "$PKG/SatelliteMapView.java" | awk '{print $1}')"
+          mkdir -p "$RES/xml" "$RES/values"
+
+          cat > "$PKG/DuwmLiveWallpaperService.java" <<'JAVA'
+          package com.sentongoharuna.worldsituationroom;
+          import android.service.wallpaper.WallpaperService;
+          import android.view.SurfaceHolder;
+          import android.graphics.Canvas;
+          import android.graphics.Paint;
+          import android.graphics.Color;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.os.SystemClock;
+
+          public final class DuwmLiveWallpaperService extends WallpaperService {
+            @Override public Engine onCreateEngine(){ return new GlobeEngine(); }
+            private final class GlobeEngine extends Engine {
+              private final Handler ui=new Handler(Looper.getMainLooper());
+              private final Paint earth=new Paint(Paint.ANTI_ALIAS_FLAG);
+              private final Paint grid=new Paint(Paint.ANTI_ALIAS_FLAG);
+              private final Paint accent=new Paint(Paint.ANTI_ALIAS_FLAG);
+              private boolean visible=false, pending=false;
+              private long lastMs=0L;
+              private double rotation=0.0d;
+              private static final long FRAME_MS=33L;
+
+              private final Runnable tick=new Runnable(){
+                @Override public void run(){
+                  pending=false;
+                  if(!visible)return;
+                  long now=SystemClock.uptimeMillis();
+                  long dt=lastMs==0L?FRAME_MS:Math.min(100L,Math.max(0L,now-lastMs));
+                  lastMs=now;
+                  rotation=(rotation+(dt/1000.0d)*4.0d)%360.0d;
+                  drawGlobe();
+                  schedule();
+                }
+              };
+
+              GlobeEngine(){
+                earth.setColor(Color.rgb(5,18,31)); earth.setStyle(Paint.Style.FILL);
+                grid.setColor(Color.argb(95,58,185,220)); grid.setStyle(Paint.Style.STROKE); grid.setStrokeWidth(1.2f);
+                accent.setColor(Color.rgb(58,220,132)); accent.setStyle(Paint.Style.STROKE); accent.setStrokeWidth(2f);
+              }
+              private void schedule(){ if(!visible||pending)return; pending=true; ui.postDelayed(tick,FRAME_MS); }
+              private void stop(){ visible=false; pending=false; ui.removeCallbacks(tick); }
+              @Override public void onVisibilityChanged(boolean v){ visible=v; if(v){lastMs=0L;schedule();}else stop(); }
+              @Override public void onSurfaceChanged(SurfaceHolder h,int f,int w,int x){super.onSurfaceChanged(h,f,w,x);if(visible)drawGlobe();}
+              @Override public void onSurfaceDestroyed(SurfaceHolder h){stop();super.onSurfaceDestroyed(h);}
+              @Override public void onDestroy(){stop();super.onDestroy();}
+
+              private void drawGlobe(){
+                SurfaceHolder h=getSurfaceHolder(); Canvas c=null;
+                try{
+                  c=h.lockCanvas(); if(c==null)return; c.drawColor(Color.BLACK);
+                  float w=c.getWidth(), ht=c.getHeight(), cx=w*.5f, cy=ht*.48f, r=Math.min(w,ht)*.34f;
+                  c.drawCircle(cx,cy,r,earth);
+                  for(int lat=-60;lat<=60;lat+=30){
+                    float y=cy-(float)Math.sin(Math.toRadians(lat))*r;
+                    float rx=(float)(Math.cos(Math.toRadians(lat))*r);
+                    c.drawOval(cx-rx,y-r*.08f,cx+rx,y+r*.08f,grid);
+                  }
+                  for(int lon=0;lon<180;lon+=30){
+                    double a=Math.toRadians(lon+rotation); float rx=(float)(Math.abs(Math.cos(a))*r);
+                    c.drawOval(cx-rx,cy-r,cx+rx,cy+r,grid);
+                  }
+                  double a=Math.toRadians(rotation);
+                  c.drawCircle(cx+(float)Math.cos(a)*r,cy+(float)Math.sin(a)*r*.25f,7f,accent);
+                } finally { if(c!=null)h.unlockCanvasAndPost(c); }
+              }
+            }
+          }
+          JAVA
+
+          cat > "$PKG/LiveWallpaperLauncherActivity.java" <<'JAVA'
+          package com.sentongoharuna.worldsituationroom;
+          import android.app.Activity;
+          import android.app.WallpaperManager;
+          import android.content.ComponentName;
+          import android.content.Intent;
+          import android.os.Bundle;
+          public final class LiveWallpaperLauncherActivity extends Activity {
+            @Override protected void onCreate(Bundle b){
+              super.onCreate(b);
+              Intent i=new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
+              i.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,new ComponentName(this,DuwmLiveWallpaperService.class));
+              try{startActivity(i);}catch(Throwable t){startActivity(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER));}
+              finish();
+            }
+          }
+          JAVA
+
+          cat > "$RES/xml/duwm_live_wallpaper.xml" <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
+            android:description="@string/duwm_live_wallpaper_description" />
+          XML
+
+          cat > "$RES/values/duwm_live_wallpaper_strings.xml" <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+            <string name="duwm_live_wallpaper_name">DU World Monitor Live Globe</string>
+            <string name="duwm_live_wallpaper_description">Live rotating DU World Monitor globe wallpaper.</string>
+          </resources>
+          XML
+
+          python3 - "$MANIFEST" <<'PY'
+          import pathlib,sys
+          p=pathlib.Path(sys.argv[1]); s=p.read_text()
+          if 'DuwmLiveWallpaperService' not in s:
+              at=s.rfind('</application>')
+              if at<0: raise SystemExit("application close tag missing")
+              block='''\
+              <service android:name=".DuwmLiveWallpaperService" android:exported="true"
+                android:label="@string/duwm_live_wallpaper_name"
+                android:permission="android.permission.BIND_WALLPAPER">
+                <intent-filter><action android:name="android.service.wallpaper.WallpaperService" /></intent-filter>
+                <meta-data android:name="android.service.wallpaper" android:resource="@xml/duwm_live_wallpaper" />
+              </service>
+              <activity android:name=".LiveWallpaperLauncherActivity" android:exported="false" />
+              '''
+              p.write_text(s[:at]+block+s[at:])
+          PY
+
+          GLOBE_AFTER="$(sha256sum "$PKG/SatelliteMapView.java" | awk '{print $1}')"
+          test "$GLOBE_BEFORE" = "$GLOBE_AFTER"
+          echo "RUNNINGBALL2 WORKING GLOBE SOURCE PRESERVED"
+
+      - name: RUNNINGBALL2 wallpaper acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom"
+          MANIFEST="$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          test -s "$PKG/DuwmLiveWallpaperService.java"
+          test -s "$PKG/LiveWallpaperLauncherActivity.java"
+          grep -Fq "FRAME_MS=33L" "$PKG/DuwmLiveWallpaperService.java"
+          grep -Fq "if(!visible||pending)return" "$PKG/DuwmLiveWallpaperService.java"
+          grep -Fq "ui.removeCallbacks(tick)" "$PKG/DuwmLiveWallpaperService.java"
+          grep -Fq "ACTION_CHANGE_LIVE_WALLPAPER" "$PKG/LiveWallpaperLauncherActivity.java"
+          grep -Fq "android.permission.BIND_WALLPAPER" "$MANIFEST"
+          echo "RUNNINGBALL2 LIVE WALLPAPER ACCEPTANCE PASS"
+
+      - name: Add 24 widgets (isolated source patch)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "aW1wb3J0IHBhdGhsaWIsc3lzLHhtbC5ldHJlZS5FbGVtZW50VHJlZSBhcyBFVApyb290PXBhdGhsaWIuUGF0aChzeXMuYXJndlsxXSk7IHBrZz1yb290LydhcHAvc3JjL21haW4vamF2YS9jb20vc2VudG9uZ29oYXJ1bmEvd29ybGRzaXR1YXRpb25yb29tJztyZXM9cm9vdC8nYXBwL3NyYy9tYWluL3Jlcyc7bWFuaWZlc3Q9cm9vdC8nYXBwL3NyYy9tYWluL0FuZHJvaWRNYW5pZmVzdC54bWwnCmFzc2VydCAocGtnLydTYXRlbGxpdGVNYXBWaWV3LmphdmEnKS5pc19maWxlKCkKbmFtZXM9WydXb3JsZCBNb25pdG9yJywnQXZpYXRpb24gTW9uaXRvcicsJ01hcml0aW1lIE1vbml0b3InLCdCcmVha2luZyBOZXdzJywnR2xvYmFsIEludGVsbGlnZW5jZScsJ1dlYXRoZXIgTW9uaXRvcicsJ0VhcnRocXVha2UgTW9uaXRvcicsJ1JhZGlvIE1vbml0b3InLCdMaXZlIFRlbGV2aXNpb24nLCdMaXZlIENhbWVyYXMnLCdTYXRlbGxpdGUgTW9uaXRvcicsJ0VtZXJnZW5jeSBNb25pdG9yJywnQWZyaWNhIE1vbml0b3InLCdVZ2FuZGEgTW9uaXRvcicsJ0dsb2JhbCBTdGF0aXN0aWNzJywnQWlycG9ydCBNb25pdG9yJywnUG9ydCBNb25pdG9yJywnTG9jYXRpb24gTW9uaXRvcicsJ0xvY2FsIFJlcG9ydGVycycsJ1NlYXJjaCBNb25pdG9yJywnVHJlbmRpbmcgRXZlbnRzJywnV29ybGQgQ2xvY2snLCdDb3VudHJ5IE1vbml0b3InLCdEYXRhIFNvdXJjZSBTdGF0dXMnXQoocmVzLydsYXlvdXQnKS5ta2RpcihwYXJlbnRzPVRydWUsZXhpc3Rfb2s9VHJ1ZSk7KHJlcy8neG1sJykubWtkaXIoZXhpc3Rfb2s9VHJ1ZSkKKHJlcy8nbGF5b3V0L2R1d21fd2lkZ2V0LnhtbCcpLndyaXRlX3RleHQoJzxMaW5lYXJMYXlvdXQgeG1sbnM6YW5kcm9pZD0iaHR0cDovL3NjaGVtYXMuYW5kcm9pZC5jb20vYXBrL3Jlcy9hbmRyb2lkIiBhbmRyb2lkOm9yaWVudGF0aW9uPSJ2ZXJ0aWNhbCIgYW5kcm9pZDpwYWRkaW5nPSIxMmRwIiBhbmRyb2lkOmJhY2tncm91bmQ9IiMwNzE1MjIiIGFuZHJvaWQ6bGF5b3V0X3dpZHRoPSJtYXRjaF9wYXJlbnQiIGFuZHJvaWQ6bGF5b3V0X2hlaWdodD0ibWF0Y2hfcGFyZW50Ij48VGV4dFZpZXcgYW5kcm9pZDppZD0iQCtpZC93aWRnZXRfdGl0bGUiIGFuZHJvaWQ6dGV4dENvbG9yPSIjNjVFNEI1IiBhbmRyb2lkOnRleHRTaXplPSIxNnNwIiBhbmRyb2lkOmxheW91dF93aWR0aD0ibWF0Y2hfcGFyZW50IiBhbmRyb2lkOmxheW91dF9oZWlnaHQ9IndyYXBfY29udGVudCIvPjxUZXh0VmlldyBhbmRyb2lkOmlkPSJAK2lkL3dpZGdldF92YWx1ZSIgYW5kcm9pZDp0ZXh0Q29sb3I9IiNGRkZGRkYiIGFuZHJvaWQ6dGV4dFNpemU9IjE0c3AiIGFuZHJvaWQ6bGF5b3V0X3dpZHRoPSJtYXRjaF9wYXJlbnQiIGFuZHJvaWQ6bGF5b3V0X2hlaWdodD0id3JhcF9jb250ZW50Ii8+PFRleHRWaWV3IGFuZHJvaWQ6aWQ9IkAraWQvd2lkZ2V0X3VwZGF0ZWQiIGFuZHJvaWQ6dGV4dENvbG9yPSIjQjNDNkQ1IiBhbmRyb2lkOnRleHRTaXplPSIxMXNwIiBhbmRyb2lkOmxheW91dF93aWR0aD0ibWF0Y2hfcGFyZW50IiBhbmRyb2lkOmxheW91dF9oZWlnaHQ9IndyYXBfY29udGVudCIvPjwvTGluZWFyTGF5b3V0PicpCnByb3ZpZGVyPScnJ3BhY2thZ2UgY29tLnNlbnRvbmdvaGFydW5hLndvcmxkc2l0dWF0aW9ucm9vbTsKaW1wb3J0IGFuZHJvaWQuYXBwLlBlbmRpbmdJbnRlbnQ7CmltcG9ydCBhbmRyb2lkLmFwcHdpZGdldC4qOwppbXBvcnQgYW5kcm9pZC5jb250ZW50Lio7CmltcG9ydCBhbmRyb2lkLndpZGdldC5SZW1vdGVWaWV3czsKcHVibGljIGNsYXNzIER1d21XaWRnZXRQcm92aWRlciBleHRlbmRzIEFwcFdpZGdldFByb3ZpZGVyIHsKIHB1YmxpYyBzdGF0aWMgZmluYWwgU3RyaW5nW10gVElUTEVTPXtUSVRMRVN9OwogQE92ZXJyaWRlIHB1YmxpYyB2b2lkIG9uVXBkYXRlKENvbnRleHQgYyxBcHBXaWRnZXRNYW5hZ2VyIG0saW50W10gaWRzKXtmb3IoaW50IGlkOmlkcyl7QXBwV2lkZ2V0UHJvdmlkZXJJbmZvIGluZm89bS5nZXRBcHBXaWRnZXRJbmZvKGlkKTtpZihpbmZvPT1udWxsKWNvbnRpbnVlO1N0cmluZyBuYW1lPWluZm8ucHJvdmlkZXIuZ2V0Q2xhc3NOYW1lKCk7aW50IGlkeD0wO3RyeXtpZHg9SW50ZWdlci5wYXJzZUludChuYW1lLnN1YnN0cmluZyhuYW1lLmxhc3RJbmRleE9mKCJEdXdtV2lkZ2V0IikrMTApKS0xO31jYXRjaChFeGNlcHRpb24gaWdub3JlZCl7fWlmKGlkeDwwfHxpZHg+PVRJVExFUy5sZW5ndGgpaWR4PTA7CiBTaGFyZWRQcmVmZXJlbmNlcyBwPWMuZ2V0U2hhcmVkUHJlZmVyZW5jZXMoImR1d21fd2lkZ2V0X3ZlcmlmaWVkX2RhdGEiLENvbnRleHQuTU9ERV9QUklWQVRFKTsKIFJlbW90ZVZpZXdzIHY9bmV3IFJlbW90ZVZpZXdzKGMuZ2V0UGFja2FnZU5hbWUoKSxSLmxheW91dC5kdXdtX3dpZGdldCk7CiB2LnNldFRleHRWaWV3VGV4dChSLmlkLndpZGdldF90aXRsZSxUSVRMRVNbaWR4XSk7di5zZXRUZXh0Vmlld1RleHQoUi5pZC53aWRnZXRfdmFsdWUscC5nZXRTdHJpbmcoInZhbHVlXyIraWR4LCJPcGVuIGFwcCB0byB2aWV3IGN1cnJlbnQgaW5mb3JtYXRpb24iKSk7di5zZXRUZXh0Vmlld1RleHQoUi5pZC53aWRnZXRfdXBkYXRlZCxwLmdldFN0cmluZygidXBkYXRlZF8iK2lkeCwiTm8gdmVyaWZpZWQgdXBkYXRlIGF2YWlsYWJsZSIpKTsKIEludGVudCBsYXVuY2g9Yy5nZXRQYWNrYWdlTWFuYWdlcigpLmdldExhdW5jaEludGVudEZvclBhY2thZ2UoYy5nZXRQYWNrYWdlTmFtZSgpKTtpZihsYXVuY2ghPW51bGwpe2xhdW5jaC5wdXRFeHRyYSgiZHV3bV93aWRnZXRfY2F0ZWdvcnkiLGlkeCk7UGVuZGluZ0ludGVudCBwaT1QZW5kaW5nSW50ZW50LmdldEFjdGl2aXR5KGMsaWQsbGF1bmNoLFBlbmRpbmdJbnRlbnQuRkxBR19VUERBVEVfQ1VSUkVOVHxQZW5kaW5nSW50ZW50LkZMQUdfSU1NVVRBQkxFKTt2LnNldE9uQ2xpY2tQZW5kaW5nSW50ZW50KFIuaWQud2lkZ2V0X3RpdGxlLHBpKTt2LnNldE9uQ2xpY2tQZW5kaW5nSW50ZW50KFIuaWQud2lkZ2V0X3ZhbHVlLHBpKTt9bS51cGRhdGVBcHBXaWRnZXQoaWQsdik7fX0KfQonJycucmVwbGFjZSgnVElUTEVTJywnLCcuam9pbignIicrbisnIicgZm9yIG4gaW4gbmFtZXMpLDEpCiMgcmVwYWlyIHJlcGxhY2VtZW50IHRhcmdldHMgZGVjbGFyYXRpb24gb25seQpwcm92aWRlcj1wcm92aWRlci5yZXBsYWNlKCdwdWJsaWMgc3RhdGljIGZpbmFsIFN0cmluZ1tdICcrJywnLmpvaW4oJyInK24rJyInIGZvciBuIGluIG5hbWVzKSsnPXtUSVRMRVN9OycsJ3B1YmxpYyBzdGF0aWMgZmluYWwgU3RyaW5nW10gVElUTEVTPXsnKycsJy5qb2luKCciJytuKyciJyBmb3IgbiBpbiBuYW1lcykrJ307JykKKHBrZy8nRHV3bVdpZGdldFByb3ZpZGVyLmphdmEnKS53cml0ZV90ZXh0KHByb3ZpZGVyKQpmb3IgaSxuIGluIGVudW1lcmF0ZShuYW1lcywxKToKIChwa2cvZidEdXdtV2lkZ2V0e2l9LmphdmEnKS53cml0ZV90ZXh0KGYncGFja2FnZSBjb20uc2VudG9uZ29oYXJ1bmEud29ybGRzaXR1YXRpb25yb29tO1xucHVibGljIGZpbmFsIGNsYXNzIER1d21XaWRnZXR7aX0gZXh0ZW5kcyBEdXdtV2lkZ2V0UHJvdmlkZXIge3t9fVxuJykKIChyZXMvJ3htbCcvZidkdXdtX3dpZGdldF97aX0ueG1sJykud3JpdGVfdGV4dChmJzw/eG1sIHZlcnNpb249IjEuMCIgZW5jb2Rpbmc9InV0Zi04Ij8+PGFwcHdpZGdldC1wcm92aWRlciB4bWxuczphbmRyb2lkPSJodHRwOi8vc2NoZW1hcy5hbmRyb2lkLmNvbS9hcGsvcmVzL2FuZHJvaWQiIGFuZHJvaWQ6bWluV2lkdGg9IjE4MGRwIiBhbmRyb2lkOm1pbkhlaWdodD0iMTAwZHAiIGFuZHJvaWQ6aW5pdGlhbExheW91dD0iQGxheW91dC9kdXdtX3dpZGdldCIgYW5kcm9pZDp1cGRhdGVQZXJpb2RNaWxsaXM9IjE4MDAwMDAiIGFuZHJvaWQ6cmVzaXplTW9kZT0iaG9yaXpvbnRhbHx2ZXJ0aWNhbCIgYW5kcm9pZDp3aWRnZXRDYXRlZ29yeT0iaG9tZV9zY3JlZW4iLz4nKQoocmVzLyd2YWx1ZXMvZHV3bV93aWRnZXRfbGFiZWxzLnhtbCcpLndyaXRlX3RleHQoJzxyZXNvdXJjZXM+JysnJy5qb2luKGYnPHN0cmluZyBuYW1lPSJkdXdtX3dpZGdldF9sYWJlbF97aX0iPkRVV00ge259PC9zdHJpbmc+JyBmb3IgaSxuIGluIGVudW1lcmF0ZShuYW1lcywxKSkrJzwvcmVzb3VyY2VzPicpCkVULnJlZ2lzdGVyX25hbWVzcGFjZSgnYW5kcm9pZCcsJ2h0dHA6Ly9zY2hlbWFzLmFuZHJvaWQuY29tL2Fway9yZXMvYW5kcm9pZCcpO3RyZWU9RVQucGFyc2UobWFuaWZlc3QpO2FwcD10cmVlLmdldHJvb3QoKS5maW5kKCdhcHBsaWNhdGlvbicpO2Fzc2VydCBhcHAgaXMgbm90IE5vbmU7QT0ne2h0dHA6Ly9zY2hlbWFzLmFuZHJvaWQuY29tL2Fway9yZXMvYW5kcm9pZH0nCmZvciBpIGluIHJhbmdlKDEsMjUpOgogcmVjZWl2ZXI9RVQuU3ViRWxlbWVudChhcHAsJ3JlY2VpdmVyJyx7QSsnbmFtZSc6ZicuRHV3bVdpZGdldHtpfScsQSsnbGFiZWwnOmYnQHN0cmluZy9kdXdtX3dpZGdldF9sYWJlbF97aX0nLEErJ2V4cG9ydGVkJzondHJ1ZSd9KTtmPUVULlN1YkVsZW1lbnQocmVjZWl2ZXIsJ2ludGVudC1maWx0ZXInKTtFVC5TdWJFbGVtZW50KGYsJ2FjdGlvbicse0ErJ25hbWUnOidhbmRyb2lkLmFwcHdpZGdldC5hY3Rpb24uQVBQV0lER0VUX1VQREFURSd9KTtFVC5TdWJFbGVtZW50KHJlY2VpdmVyLCdtZXRhLWRhdGEnLHtBKyduYW1lJzonYW5kcm9pZC5hcHB3aWRnZXQucHJvdmlkZXInLEErJ3Jlc291cmNlJzpmJ0B4bWwvZHV3bV93aWRnZXRfe2l9J30pCnRyZWUud3JpdGUobWFuaWZlc3QsZW5jb2Rpbmc9J3VuaWNvZGUnLHhtbF9kZWNsYXJhdGlvbj1UcnVlKQpwcmludCgnMjQgd2lkZ2V0cyByZWdpc3RlcmVkJykK" | base64 -d > "$RUNNER_TEMP/widget_patch.py"
+          python3 "$RUNNER_TEMP/widget_patch.py" "$PROJECT_DIR"
+      - name: Raisedpodium8 event-driven perimeter rings
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/raisedpodium7.py.b64" <<'PAYLOAD'
+          aW1wb3J0IHBhdGhsaWIsc3lzCnJvb3Q9cGF0aGxpYi5QYXRoKHN5cy5hcmd2WzFdKTsgcGtnPXJvb3QvJ2FwcC9zcmMvbWFpbi9qYXZhL2NvbS
+          9zZW50b25nb2hhcnVuYS93b3JsZHNpdHVhdGlvbnJvb20nO3Jlcz1yb290LydhcHAvc3JjL21haW4vcmVzJwpwa2cuam9pbnBhdGgoJ0R1d21X
+          aWRnZXRQcm92aWRlci5qYXZhJykud3JpdGVfdGV4dChyJycncGFja2FnZSBjb20uc2VudG9uZ29oYXJ1bmEud29ybGRzaXR1YXRpb25yb29tOw
+          ppbXBvcnQgYW5kcm9pZC5hcHAuUGVuZGluZ0ludGVudDsKaW1wb3J0IGFuZHJvaWQuYXBwd2lkZ2V0Lio7CmltcG9ydCBhbmRyb2lkLmNvbnRl
+          bnQuKjsKaW1wb3J0IGFuZHJvaWQub3MuKjsKaW1wb3J0IGFuZHJvaWQud2lkZ2V0LlJlbW90ZVZpZXdzOwppbXBvcnQgamF2YS50ZXh0Lio7Cm
+          ltcG9ydCBqYXZhLnV0aWwuKjsKaW1wb3J0IGFuZHJvaWQuZ3JhcGhpY3MuQ29sb3I7CgovKiogU291cmNlLWJhY2tlZCBleHRlbnNpb24uIE9y
+          aWdpbmFsIERVIHdpZGdldHMgYXJlIG5vdCBtb2RpZmllZC4gKi8KcHVibGljIGNsYXNzIER1d21XaWRnZXRQcm92aWRlciBleHRlbmRzIEFwcF
+          dpZGdldFByb3ZpZGVyIHsKIHB1YmxpYyBzdGF0aWMgZmluYWwgU3RyaW5nIEFDVElPTl9SRUZSRVNIPSJjb20uc2VudG9uZ29oYXJ1bmEud29y
+          bGRzaXR1YXRpb25yb29tLkRVV01fUkVGUkVTSF9XSURHRVQiOwogcHVibGljIHN0YXRpYyBmaW5hbCBTdHJpbmdbXSBUSVRMRVM9eyJXb3JsZC
+          BNb25pdG9yIiwiQXZpYXRpb24gTW9uaXRvciIsIk1hcml0aW1lIE1vbml0b3IiLCJCcmVha2luZyBOZXdzIiwiR2xvYmFsIEludGVsbGlnZW5j
+          ZSIsIldlYXRoZXIgTW9uaXRvciIsIkVhcnRocXVha2UgTW9uaXRvciIsIlJhZGlvIE1vbml0b3IiLCJMaXZlIFRlbGV2aXNpb24iLCJMaXZlIE
+          NhbWVyYXMiLCJTYXRlbGxpdGUgTW9uaXRvciIsIkVtZXJnZW5jeSBNb25pdG9yIiwiQWZyaWNhIE1vbml0b3IiLCJVZ2FuZGEgTW9uaXRvciIs
+          Ikdsb2JhbCBTdGF0aXN0aWNzIiwiQWlycG9ydCBNb25pdG9yIiwiUG9ydCBNb25pdG9yIiwiTG9jYXRpb24gTW9uaXRvciIsIkxvY2FsIFJlcG
+          9ydGVycyIsIlNlYXJjaCBNb25pdG9yIiwiVHJlbmRpbmcgRXZlbnRzIiwiV29ybGQgQ2xvY2siLCJDb3VudHJ5IE1vbml0b3IiLCJEYXRhIFNv
+          dXJjZSBTdGF0dXMifTsKIHByaXZhdGUgc3RhdGljIGZpbmFsIFNpZ25hbC5MYXllcltdW10gTEFZRVJTPXsKIHtTaWduYWwuTGF5ZXIuRkxJR0
+          hUUyxTaWduYWwuTGF5ZXIuU0hJUFMsU2lnbmFsLkxheWVyLk5FV1N9LCB7U2lnbmFsLkxheWVyLkZMSUdIVFN9LHtTaWduYWwuTGF5ZXIuU0hJ
+          UFN9LHtTaWduYWwuTGF5ZXIuTkVXU30se1NpZ25hbC5MYXllci5ORVdTLFNpZ25hbC5MYXllci5BSVJTUEFDRX0se1NpZ25hbC5MYXllci5XRU
+          FUSEVSfSx7U2lnbmFsLkxheWVyLk5BVFVSQUx9LHtTaWduYWwuTGF5ZXIuUkFESU99LHtTaWduYWwuTGF5ZXIuVFZ9LHtTaWduYWwuTGF5ZXIu
+          V0VCQ0FNU30se1NpZ25hbC5MYXllci5TQVRFTExJVEVTfSx7U2lnbmFsLkxheWVyLk5BVFVSQUwsU2lnbmFsLkxheWVyLkFJUlNQQUNFfSx7U2
+          lnbmFsLkxheWVyLk5FV1N9LHtTaWduYWwuTGF5ZXIuTkVXU30se1NpZ25hbC5MYXllci5GTElHSFRTLFNpZ25hbC5MYXllci5TSElQUyxTaWdu
+          YWwuTGF5ZXIuTkVXU30se1NpZ25hbC5MYXllci5GTElHSFRTfSx7U2lnbmFsLkxheWVyLlNISVBTfSx7U2lnbmFsLkxheWVyLk5FV1MsU2lnbm
+          FsLkxheWVyLldFQVRIRVJ9LHtTaWduYWwuTGF5ZXIuTUVESUF9LHtTaWduYWwuTGF5ZXIuTkVXU30se1NpZ25hbC5MYXllci5ORVdTfSx7fSx7
+          U2lnbmFsLkxheWVyLk5FV1N9LHt9fTsKIHByaXZhdGUgc3RhdGljIGZpbmFsIGphdmEudXRpbC5jb25jdXJyZW50LkV4ZWN1dG9yU2VydmljZS
+          BXT1JLPWphdmEudXRpbC5jb25jdXJyZW50LkV4ZWN1dG9ycy5uZXdTaW5nbGVUaHJlYWRFeGVjdXRvcigpOwogQE92ZXJyaWRlIHB1YmxpYyB2
+          b2lkIG9uVXBkYXRlKENvbnRleHQgYyxBcHBXaWRnZXRNYW5hZ2VyIG0saW50W10gaWRzKXtzY2hlZHVsZShjLGlkcyk7fQogQE92ZXJyaWRlIH
+          B1YmxpYyB2b2lkIG9uUmVjZWl2ZShDb250ZXh0IGMsSW50ZW50IGkpe3N1cGVyLm9uUmVjZWl2ZShjLGkpO2lmKEFDVElPTl9SRUZSRVNILmVx
+          dWFscyhpLmdldEFjdGlvbigpKSl7aW50IGlkPWkuZ2V0SW50RXh0cmEoQXBwV2lkZ2V0TWFuYWdlci5FWFRSQV9BUFBXSURHRVRfSUQsLTEpO2
+          lmKGlkIT0tMSlzY2hlZHVsZShjLG5ldyBpbnRbXXtpZH0pO319CiBwcml2YXRlIHN0YXRpYyB2b2lkIHNjaGVkdWxlKENvbnRleHQgYyxpbnRb
+          XSBpZHMpe0NvbnRleHQgYXBwPWMuZ2V0QXBwbGljYXRpb25Db250ZXh0KCk7aW50W10gY29weT1pZHMuY2xvbmUoKTtXT1JLLmV4ZWN1dGUoKC
+          ktPntXaWRnZXRTbmFwc2hvdCBzbmFwc2hvdD1XaWRnZXRTbmFwc2hvdC5sb2FkKGFwcCk7QXBwV2lkZ2V0TWFuYWdlciBtPUFwcFdpZGdldE1h
+          bmFnZXIuZ2V0SW5zdGFuY2UoYXBwKTtmb3IoaW50IGlkOmNvcHkpe3RyeXtyZW5kZXIoYXBwLG0saWQsc25hcHNob3QpO31jYXRjaChFeGNlcH
+          Rpb24gZSl7YW5kcm9pZC51dGlsLkxvZy53KCJEVVdNMjQiLCJXaWRnZXQgcmVuZGVyIGZhaWxlZCAiK2lkLGUpO319fSk7fQogcHJpdmF0ZSBz
+          dGF0aWMgdm9pZCByZW5kZXIoQ29udGV4dCBjLEFwcFdpZGdldE1hbmFnZXIgbSxpbnQgaWQsV2lkZ2V0U25hcHNob3Qgcyl7QXBwV2lkZ2V0UH
+          JvdmlkZXJJbmZvIGluZm89bS5nZXRBcHBXaWRnZXRJbmZvKGlkKTtpZihpbmZvPT1udWxsKXJldHVybjtTdHJpbmcgbj1pbmZvLnByb3ZpZGVy
+          LmdldENsYXNzTmFtZSgpO2ludCBpZHg9MDt0cnl7aWR4PUludGVnZXIucGFyc2VJbnQobi5zdWJzdHJpbmcobi5sYXN0SW5kZXhPZigiRHV3bV
+          dpZGdldCIpKzEwKSktMTt9Y2F0Y2goRXhjZXB0aW9uIGlnbm9yZWQpe31pZihpZHg8MHx8aWR4Pj1USVRMRVMubGVuZ3RoKWlkeD0wOwogUmVt
+          b3RlVmlld3Mgdj1uZXcgUmVtb3RlVmlld3MoYy5nZXRQYWNrYWdlTmFtZSgpLFIubGF5b3V0LmR1d21fd2lkZ2V0KTt2LnNldFRleHRWaWV3VG
+          V4dChSLmlkLndpZGdldF90aXRsZSwi4pePIERVICAiK1RJVExFU1tpZHhdLnRvVXBwZXJDYXNlKExvY2FsZS5VUykpOwogaW50IHRvdGFsPTA7
+          U2lnbmFsIG5ld2VzdD1udWxsO1NpZ25hbC5MYXllciBjaG9zZW49bnVsbDtsb25nIHN0YW1wPTA7U3RyaW5nQnVpbGRlciBjb3VudHM9bmV3IF
+          N0cmluZ0J1aWxkZXIoKTsKIGZvcihTaWduYWwuTGF5ZXIgbGF5ZXI6TEFZRVJTW2lkeF0pe2ludCBjb3VudD1zLmNvdW50KGxheWVyKTt0b3Rh
+          bCs9Y291bnQ7aWYoY291bnRzLmxlbmd0aCgpPjApY291bnRzLmFwcGVuZCgiICDigKIgICIpO2NvdW50cy5hcHBlbmQobGF5ZXIubmFtZSgpKS
+          5hcHBlbmQoJyAnKS5hcHBlbmQoY291bnQpO0ZlZWRTdGF0dXMgZnM9cy5lZmZlY3RpdmVTdGF0dXMobGF5ZXIpO2lmKGZzIT1udWxsKXN0YW1w
+          PU1hdGgubWF4KHN0YW1wLGZzLnVwZGF0ZWRBdE1zKTt9CiBpZihpZHg9PTIzKXt0b3RhbD1zLm9ubGluZUZlZWRzO2NvdW50cz1uZXcgU3RyaW
+          5nQnVpbGRlcihzLnNvdXJjZUhlYWx0aExpbmUoKSk7c3RhbXA9cy5sYXN0U291cmNlVXBkYXRlTXM7fQogaWYoaWR4PT0yMSl7di5zZXRUZXh0
+          Vmlld1RleHQoUi5pZC53aWRnZXRfdmFsdWUsbmV3IFNpbXBsZURhdGVGb3JtYXQoIkhIOm1tIixMb2NhbGUuZ2V0RGVmYXVsdCgpKS5mb3JtYX
+          QobmV3IERhdGUoKSkpO2NvdW50cz1uZXcgU3RyaW5nQnVpbGRlcihuZXcgU2ltcGxlRGF0ZUZvcm1hdCgiRUVFLCBkZCBNTU0geXl5eSIsTG9j
+          YWxlLmdldERlZmF1bHQoKSkuZm9ybWF0KG5ldyBEYXRlKCkpKTtzdGFtcD1TeXN0ZW0uY3VycmVudFRpbWVNaWxsaXMoKTt9CiBlbHNlIGlmKE
+          xBWUVSU1tpZHhdLmxlbmd0aD09MCl7di5zZXRUZXh0Vmlld1RleHQoUi5pZC53aWRnZXRfdmFsdWUsIuKAlCIpO2NvdW50cz1uZXcgU3RyaW5n
+          QnVpbGRlcigiTm8gZGVkaWNhdGVkIHNvdXJjZSBjb25maWd1cmVkIik7fQogZWxzZXt2LnNldFRleHRWaWV3VGV4dChSLmlkLndpZGdldF92YW
+          x1ZSxTdHJpbmcudmFsdWVPZih0b3RhbCkpO30KIGlmKExBWUVSU1tpZHhdLmxlbmd0aD4wKXtmb3IoU2lnbmFsLkxheWVyIGxheWVyOkxBWUVS
+          U1tpZHhdKXtGZWVkU3RhdHVzIGZzPXMuZWZmZWN0aXZlU3RhdHVzKGxheWVyKTtpZihmcyE9bnVsbCAmJiBmcy5zdGF0ZT09RmVlZFN0YXR1cy
+          5TdGF0ZS5PRkZMSU5FKWNvbnRpbnVlOyAvLyBuZXZlciBpbnZlbnQgYW4gZXZlbnQKIC8vIFNob3cgb25seSBzb3VyY2UtYmFja2VkIGNvdW50
+          cywgbm90IHN5bnRoZXRpYyBoZWFkbGluZXMKIH19CiAKIC8vIEEgc2lnbmFsIGNoYW5nZXMgb25seSB3aGVuIHRoZSBzb3VyY2UtYmFja2VkIG
+          NvdW50IGNoYW5nZXM7IG5vIGludmVudGVkIHVwZGF0ZXMuCiBhbmRyb2lkLmNvbnRlbnQuU2hhcmVkUHJlZmVyZW5jZXMgcHJlZnM9Yy5nZXRT
+          aGFyZWRQcmVmZXJlbmNlcygiZHV3bV93aWRnZXRfc2lnbmFsX3N0YXRlIixDb250ZXh0Lk1PREVfUFJJVkFURSk7CiBTdHJpbmcga2V5PSJjb3
+          VudF8iK2lkOwogYm9vbGVhbiBwcmV2aW91c2x5PXByZWZzLmNvbnRhaW5zKGtleSk7CiBpbnQgcHJldmlvdXM9cHJlZnMuZ2V0SW50KGtleSx0
+          b3RhbCk7CiBib29sZWFuIGNoYW5nZWQ9cHJldmlvdXNseSAmJiBwcmV2aW91cyE9dG90YWw7CiBwcmVmcy5lZGl0KCkucHV0SW50KGtleSx0b3
+          RhbCkuYXBwbHkoKTsKIGJvb2xlYW4gc3RhbGU9c3RhbXA8PTAgfHwgU3lzdGVtLmN1cnJlbnRUaW1lTWlsbGlzKCktc3RhbXA+MzYwMDAwMEw7
+          CiBib29sZWFuIG5ld1JlcG9ydD1jaGFuZ2VkICYmICFzdGFsZTsKIGludCByaW5nUmVzPXN0YWxlP1IuZHJhd2FibGUuZHV3bV9yaW5nX29mZm
+          xpbmU6KG5ld1JlcG9ydD9SLmRyYXdhYmxlLmR1d21fcmluZ19uZXc6Ui5kcmF3YWJsZS5kdXdtX3JpbmdfaGVhbHRoeSk7CiB2LnNldEludChS
+          LmlkLndpZGdldF9yb290LCJzZXRCYWNrZ3JvdW5kUmVzb3VyY2UiLHJpbmdSZXMpOwogdi5zZXRJbnQoUi5pZC53aWRnZXRfZWRnZSwic2V0Qm
+          Fja2dyb3VuZENvbG9yIixzdGFsZT9Db2xvci5yZ2IoMTEwLDEyNSwxNDMpOihuZXdSZXBvcnQ/Q29sb3IucmdiKDQ1LDE4MCwyNTUpOkNvbG9y
+          LnJnYigzOCwyMjQsMTQ1KSkpOwogaW50IHNpZ25hbENvbG9yPXN0YWxlP0NvbG9yLnJnYigxMTAsMTI1LDE0Myk6KGNoYW5nZWQ/Q29sb3Iucm
+          diKDQ1LDE4MCwyNTUpOkNvbG9yLnJnYigzOCwyMjQsMTQ1KSk7CiB2LnNldFRleHRDb2xvcihSLmlkLndpZGdldF9zaWduYWwsc2lnbmFsQ29s
+          b3IpOwogdi5zZXRUZXh0Vmlld1RleHQoUi5pZC53aWRnZXRfc2lnbmFsLG5ld1JlcG9ydD8i4peGIE5FVyBEQVRBIjoi4pePICIrKHN0YWxlPy
+          JTVEFMRSI6IkZFRUQgQUNUSVZFIikpOwogdi5zZXRUZXh0Vmlld1RleHQoUi5pZC53aWRnZXRfZGVsdGEsY2hhbmdlZD8oKHRvdGFsPnByZXZp
+          b3VzPyLilrIgKyI6IuKWvCAiKStNYXRoLmFicyh0b3RhbC1wcmV2aW91cykrIiBTSU5DRSBMQVNUIFVQREFURSIpOiJMSVZFIFNPVVJDRSBNT0
+          5JVE9SIik7CiB2LnNldFRleHRDb2xvcihSLmlkLndpZGdldF9kZWx0YSxzaWduYWxDb2xvcik7CiB2LnNldFRleHRWaWV3VGV4dChSLmlkLndp
+          ZGdldF9kZXRhaWwsY291bnRzLnRvU3RyaW5nKCkpO1N0cmluZyBhZ2U9c3RhbXA+MD9hbmRyb2lkLnRleHQuZm9ybWF0LkRhdGVVdGlscy5nZX
+          RSZWxhdGl2ZVRpbWVTcGFuU3RyaW5nKHN0YW1wLFN5c3RlbS5jdXJyZW50VGltZU1pbGxpcygpLDYwMDAwKS50b1N0cmluZygpOiJubyBzb3Vy
+          Y2UgdGltZXN0YW1wIjsKIHYuc2V0VGV4dFZpZXdUZXh0KFIuaWQud2lkZ2V0X3VwZGF0ZWQsIlNPVVJDRSDigKIgIitzLmhlYWx0aEJhZGdlKC
+          krIiAgfCAgIithZ2UpOwogSW50ZW50IG9wZW49Yy5nZXRQYWNrYWdlTWFuYWdlcigpLmdldExhdW5jaEludGVudEZvclBhY2thZ2UoYy5nZXRQ
+          YWNrYWdlTmFtZSgpKTtpZihvcGVuIT1udWxsKXtvcGVuLnB1dEV4dHJhKCJkdXdtX3dpZGdldF9jYXRlZ29yeSIsaWR4KTtQZW5kaW5nSW50ZW
+          50IHA9UGVuZGluZ0ludGVudC5nZXRBY3Rpdml0eShjLGlkLG9wZW4sUGVuZGluZ0ludGVudC5GTEFHX1VQREFURV9DVVJSRU5UfFBlbmRpbmdJ
+          bnRlbnQuRkxBR19JTU1VVEFCTEUpO3Yuc2V0T25DbGlja1BlbmRpbmdJbnRlbnQoUi5pZC53aWRnZXRfdGl0bGUscCk7di5zZXRPbkNsaWNrUG
+          VuZGluZ0ludGVudChSLmlkLndpZGdldF92YWx1ZSxwKTt9CiBJbnRlbnQgcmVmcmVzaD1uZXcgSW50ZW50KGMsRHV3bVdpZGdldFByb3ZpZGVy
+          LmNsYXNzKTtyZWZyZXNoLnNldEFjdGlvbihBQ1RJT05fUkVGUkVTSCk7cmVmcmVzaC5wdXRFeHRyYShBcHBXaWRnZXRNYW5hZ2VyLkVYVFJBX0
+          FQUFdJREdFVF9JRCxpZCk7UGVuZGluZ0ludGVudCBycD1QZW5kaW5nSW50ZW50LmdldEJyb2FkY2FzdChjLGlkLHJlZnJlc2gsUGVuZGluZ0lu
+          dGVudC5GTEFHX1VQREFURV9DVVJSRU5UfFBlbmRpbmdJbnRlbnQuRkxBR19JTU1VVEFCTEUpO3Yuc2V0T25DbGlja1BlbmRpbmdJbnRlbnQoUi
+          5pZC53aWRnZXRfcmVmcmVzaCxycCk7bS51cGRhdGVBcHBXaWRnZXQoaWQsdik7CiB9Cn0KJycnKQoocmVzLydsYXlvdXQvZHV3bV93aWRnZXQu
+          eG1sJykud3JpdGVfdGV4dCgnPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz5cbjxMaW5lYXJMYXlvdXQgeG1sbnM6YW5kcm
+          9pZD0iaHR0cDovL3NjaGVtYXMuYW5kcm9pZC5jb20vYXBrL3Jlcy9hbmRyb2lkIiBhbmRyb2lkOmlkPSJAK2lkL3dpZGdldF9yb290IiBhbmRy
+          b2lkOm9yaWVudGF0aW9uPSJob3Jpem9udGFsIiBhbmRyb2lkOmJhY2tncm91bmQ9IkBkcmF3YWJsZS9kdXdtX3dpZGdldF9mcmFtZSIgYW5kcm
+          9pZDpwYWRkaW5nPSIyZHAiIGFuZHJvaWQ6bGF5b3V0X3dpZHRoPSJtYXRjaF9wYXJlbnQiIGFuZHJvaWQ6bGF5b3V0X2hlaWdodD0ibWF0Y2hf
+          cGFyZW50Ij5cbjxUZXh0VmlldyBhbmRyb2lkOmlkPSJAK2lkL3dpZGdldF9lZGdlIiBhbmRyb2lkOmxheW91dF93aWR0aD0iM2RwIiBhbmRyb2
+          lkOmxheW91dF9oZWlnaHQ9Im1hdGNoX3BhcmVudCIgYW5kcm9pZDpiYWNrZ3JvdW5kPSIjMURBOUQ4IiBhbmRyb2lkOnRleHQ9IiIvPlxuPExp
+          bmVhckxheW91dCBhbmRyb2lkOm9yaWVudGF0aW9uPSJ2ZXJ0aWNhbCIgYW5kcm9pZDpwYWRkaW5nPSI5ZHAiIGFuZHJvaWQ6bGF5b3V0X3dpZH
+          RoPSIwZHAiIGFuZHJvaWQ6bGF5b3V0X3dlaWdodD0iMSIgYW5kcm9pZDpsYXlvdXRfaGVpZ2h0PSJtYXRjaF9wYXJlbnQiPlxuPExpbmVhckxh
+          eW91dCBhbmRyb2lkOm9yaWVudGF0aW9uPSJob3Jpem9udGFsIiBhbmRyb2lkOmxheW91dF93aWR0aD0ibWF0Y2hfcGFyZW50IiBhbmRyb2lkOm
+          xheW91dF9oZWlnaHQ9IndyYXBfY29udGVudCI+XG48VGV4dFZpZXcgYW5kcm9pZDppZD0iQCtpZC93aWRnZXRfdGl0bGUiIGFuZHJvaWQ6bGF5
+          b3V0X3dpZHRoPSIwZHAiIGFuZHJvaWQ6bGF5b3V0X3dlaWdodD0iMSIgYW5kcm9pZDpsYXlvdXRfaGVpZ2h0PSJ3cmFwX2NvbnRlbnQiIGFuZH
+          JvaWQ6dGV4dENvbG9yPSIjODFFN0Y0IiBhbmRyb2lkOnRleHRTaXplPSIxMnNwIiBhbmRyb2lkOnRleHRTdHlsZT0iYm9sZCIgYW5kcm9pZDpt
+          YXhMaW5lcz0iMSIvPlxuPFRleHRWaWV3IGFuZHJvaWQ6aWQ9IkAraWQvd2lkZ2V0X3NpZ25hbCIgYW5kcm9pZDpsYXlvdXRfd2lkdGg9IndyYX
+          BfY29udGVudCIgYW5kcm9pZDpsYXlvdXRfaGVpZ2h0PSJ3cmFwX2NvbnRlbnQiIGFuZHJvaWQ6dGV4dENvbG9yPSIjMzlERjlCIiBhbmRyb2lk
+          OnRleHRTaXplPSI5c3AiIGFuZHJvaWQ6dGV4dD0i4pePIEZFRUQiLz5cbjwvTGluZWFyTGF5b3V0PlxuPFRleHRWaWV3IGFuZHJvaWQ6aWQ9Ik
+          AraWQvd2lkZ2V0X3ZhbHVlIiBhbmRyb2lkOmxheW91dF93aWR0aD0ibWF0Y2hfcGFyZW50IiBhbmRyb2lkOmxheW91dF9oZWlnaHQ9IndyYXBf
+          Y29udGVudCIgYW5kcm9pZDp0ZXh0Q29sb3I9IiNGMUZBRkYiIGFuZHJvaWQ6dGV4dFNpemU9IjM2c3AiIGFuZHJvaWQ6dGV4dFN0eWxlPSJib2
+          xkIiBhbmRyb2lkOm1heExpbmVzPSIxIi8+XG48VGV4dFZpZXcgYW5kcm9pZDppZD0iQCtpZC93aWRnZXRfZGVsdGEiIGFuZHJvaWQ6bGF5b3V0
+          X3dpZHRoPSJtYXRjaF9wYXJlbnQiIGFuZHJvaWQ6bGF5b3V0X2hlaWdodD0id3JhcF9jb250ZW50IiBhbmRyb2lkOnRleHRDb2xvcj0iIzM2RE
+          RCMCIgYW5kcm9pZDp0ZXh0U2l6ZT0iMTBzcCIgYW5kcm9pZDptYXhMaW5lcz0iMSIvPlxuPFRleHRWaWV3IGFuZHJvaWQ6aWQ9IkAraWQvd2lk
+          Z2V0X2RldGFpbCIgYW5kcm9pZDpsYXlvdXRfd2lkdGg9Im1hdGNoX3BhcmVudCIgYW5kcm9pZDpsYXlvdXRfaGVpZ2h0PSIwZHAiIGFuZHJvaW
+          Q6bGF5b3V0X3dlaWdodD0iMSIgYW5kcm9pZDp0ZXh0Q29sb3I9IiNCMkQ5RTkiIGFuZHJvaWQ6dGV4dFNpemU9IjExc3AiIGFuZHJvaWQ6bWF4
+          TGluZXM9IjQiIGFuZHJvaWQ6Z3Jhdml0eT0iY2VudGVyX3ZlcnRpY2FsIi8+XG48TGluZWFyTGF5b3V0IGFuZHJvaWQ6b3JpZW50YXRpb249Im
+          hvcml6b250YWwiIGFuZHJvaWQ6bGF5b3V0X3dpZHRoPSJtYXRjaF9wYXJlbnQiIGFuZHJvaWQ6bGF5b3V0X2hlaWdodD0id3JhcF9jb250ZW50
+          Ij5cbjxUZXh0VmlldyBhbmRyb2lkOmlkPSJAK2lkL3dpZGdldF91cGRhdGVkIiBhbmRyb2lkOmxheW91dF93aWR0aD0iMGRwIiBhbmRyb2lkOm
+          xheW91dF93ZWlnaHQ9IjEiIGFuZHJvaWQ6bGF5b3V0X2hlaWdodD0id3JhcF9jb250ZW50IiBhbmRyb2lkOnRleHRDb2xvcj0iIzgyOUVCMiIg
+          YW5kcm9pZDp0ZXh0U2l6ZT0iOXNwIiBhbmRyb2lkOm1heExpbmVzPSIyIi8+XG48VGV4dFZpZXcgYW5kcm9pZDppZD0iQCtpZC93aWRnZXRfcm
+          VmcmVzaCIgYW5kcm9pZDpsYXlvdXRfd2lkdGg9IndyYXBfY29udGVudCIgYW5kcm9pZDpsYXlvdXRfaGVpZ2h0PSJ3cmFwX2NvbnRlbnQiIGFu
+          ZHJvaWQ6dGV4dD0i4oa7IFJFRlJFU0giIGFuZHJvaWQ6dGV4dENvbG9yPSIjNzhFN0RDIiBhbmRyb2lkOnRleHRTaXplPSIxMHNwIiBhbmRyb2
+          lkOnBhZGRpbmc9IjVkcCIvPlxuPC9MaW5lYXJMYXlvdXQ+XG48L0xpbmVhckxheW91dD48L0xpbmVhckxheW91dD4nKQoocmVzLydkcmF3YWJs
+          ZScpLm1rZGlyKGV4aXN0X29rPVRydWUpCihyZXMvJ2RyYXdhYmxlL2R1d21fd2lkZ2V0X2ZyYW1lLnhtbCcpLndyaXRlX3RleHQoJzw/eG1sIH
+          ZlcnNpb249IjEuMCIgZW5jb2Rpbmc9InV0Zi04Ij8+PHNoYXBlIHhtbG5zOmFuZHJvaWQ9Imh0dHA6Ly9zY2hlbWFzLmFuZHJvaWQuY29tL2Fw
+          ay9yZXMvYW5kcm9pZCI+PHNvbGlkIGFuZHJvaWQ6Y29sb3I9IiMwNzEyMUUiLz48c3Ryb2tlIGFuZHJvaWQ6d2lkdGg9IjFkcCIgYW5kcm9pZD
+          pjb2xvcj0iIzI3QTdDQiIvPjxjb3JuZXJzIGFuZHJvaWQ6cmFkaXVzPSIxMmRwIi8+PC9zaGFwZT4nKQojIER5bmFtaWMgMWRwIHBlcmltZXRl
+          ciBmcmFtZXMsIHNvdXJjZS1iYWNrZWQgYW5kIFJlbW90ZVZpZXdzIGNvbXBhdGlibGUuCmZvciBzdWZmaXgsaGV4Y29sb3IgaW4gWygnaGVhbH
+          RoeScsJyMyNkUwOTEnKSwoJ25ldycsJyMyREI0RkYnKSwoJ29mZmxpbmUnLCcjNkU3RDhGJyldOgogICAgKHJlcy8oJ2RyYXdhYmxlL2R1d21f
+          cmluZ18nK3N1ZmZpeCsnLnhtbCcpKS53cml0ZV90ZXh0KCc8P3htbCB2ZXJzaW9uPSIxLjAiIGVuY29kaW5nPSJ1dGYtOCI/PjxzaGFwZSB4bW
+          xuczphbmRyb2lkPSJodHRwOi8vc2NoZW1hcy5hbmRyb2lkLmNvbS9hcGsvcmVzL2FuZHJvaWQiPjxzb2xpZCBhbmRyb2lkOmNvbG9yPSIjMDcx
+          MjFFIi8+PHN0cm9rZSBhbmRyb2lkOndpZHRoPSIxZHAiIGFuZHJvaWQ6Y29sb3I9IicraGV4Y29sb3IrJyIvPjxjb3JuZXJzIGFuZHJvaWQ6cm
+          FkaXVzPSIxMmRwIi8+PC9zaGFwZT4nKQpwcmludCgnV2lkZ2V0IHNvdXJjZSBpbnN0YWxsZWQnKQo=
+          PAYLOAD
+          base64 -d "$RUNNER_TEMP/raisedpodium7.py.b64" > "$RUNNER_TEMP/raisedpodium7.py"
+          python3 "$RUNNER_TEMP/raisedpodium7.py" "$PROJECT_DIR"
+          python3 - "$PROJECT_DIR" <<'CHECK'
+          import pathlib,sys,xml.etree.ElementTree as ET
+          root=pathlib.Path(sys.argv[1]); res=root/'app/src/main/res'
+          ET.parse(res/'layout/duwm_widget.xml')
+          ET.parse(res/'drawable/duwm_widget_frame.xml')
+          for name in ['healthy','new','offline']: ET.parse(res/('drawable/duwm_ring_'+name+'.xml'))
+          java=(root/'app/src/main/java/com/sentongoharuna/worldsituationroom/DuwmWidgetProvider.java').read_text()
+          assert 'WidgetSnapshot.load' in java and 'changed=previously' in java and 'duwm_ring_new' in java
+          assert '<Space' not in (res/'layout/duwm_widget.xml').read_text()
+          print('PASS: 24 widgets have source-backed counts, change detection, colored rings and RemoteViews-compatible layouts')
+          CHECK
+      - name: Install independent event pulse engine
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/raisedpodium9.py" <<'PY'
+          import pathlib,sys,xml.etree.ElementTree as ET
+          root=pathlib.Path(sys.argv[1]); base=root/'app/src/main'; pkg=base/'java/com/sentongoharuna/worldsituationroom'; res=base/'res'; p=pkg/'DuwmWidgetProvider.java'
+          s=p.read_text()
+          assert 'WidgetSnapshot.load' in s and 'duwm_ring_new' in s
+          # Keep source-derived values, independently signal acquisition freshness vs content changes.
+          s=s.replace('private static final java.util.concurrent.ExecutorService WORK=java.util.concurrent.Executors.newSingleThreadExecutor();','''private static final java.util.concurrent.ExecutorService WORK=java.util.concurrent.Executors.newSingleThreadExecutor();
+           private static final java.util.concurrent.ExecutorService PULSE=java.util.concurrent.Executors.newSingleThreadExecutor();
+           private static final long PULSE_INTERVAL_MS=550L;
+           private static final int PULSE_CYCLES=3;
+           private static void pulse(Context c,int id,int ring,int side){
+             PULSE.execute(()->{
+               AppWidgetManager manager=AppWidgetManager.getInstance(c);
+               for(int phase=0;phase<PULSE_CYCLES*2;phase++){
+                 RemoteViews rv=new RemoteViews(c.getPackageName(),R.layout.duwm_widget);
+                 rv.setInt(R.id.widget_edge,"setBackgroundColor",phase%2==0?side:Color.TRANSPARENT);
+                 rv.setTextColor(R.id.widget_signal,phase%2==0?side:Color.rgb(105,126,145));
+                 rv.setInt(R.id.widget_signal,"setBackgroundColor",phase%2==0?0x332DB4FB:Color.TRANSPARENT);
+                 rv.setInt(R.id.widget_frame,"setBackgroundResource",phase%2==0?ring:R.drawable.duwm_ring_healthy);
+                 manager.partiallyUpdateAppWidget(id,rv);
+                 try{Thread.sleep(PULSE_INTERVAL_MS);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
+               }
+               RemoteViews rv=new RemoteViews(c.getPackageName(),R.layout.duwm_widget);
+               rv.setInt(R.id.widget_edge,"setBackgroundColor",side);
+               rv.setTextColor(R.id.widget_signal,side);
+               rv.setInt(R.id.widget_signal,"setBackgroundColor",Color.TRANSPARENT);
+               rv.setInt(R.id.widget_frame,"setBackgroundResource",ring);
+               manager.partiallyUpdateAppWidget(id,rv);
+             });
+           }''')
+          # Enforce independent states: ring represents source health, side represents event count delta.
+          start=s.find('int signalColor=stale?')
+          assert start!=-1
+          end=s.find('v.setTextViewText(R.id.widget_detail',start)
+          assert end!=-1
+          s=s[:start]+'''int ringColor=stale?Color.rgb(110,125,143):Color.rgb(38,224,145);
+           ringRes=stale?R.drawable.duwm_ring_offline:R.drawable.duwm_ring_healthy;
+           int sideColor=changed?(total>previous?Color.rgb(255,158,48):Color.rgb(45,180,255)):Color.rgb(124,145,160);
+           v.setInt(R.id.widget_frame,"setBackgroundResource",ringRes);
+           v.setInt(R.id.widget_edge,"setBackgroundColor",sideColor);
+           v.setTextColor(R.id.widget_signal,sideColor);
+           v.setTextViewText(R.id.widget_signal,changed?"◆ NEW COUNT":"● NO NEW EVENT");
+           v.setTextViewText(R.id.widget_delta,changed?((total>previous?"▲ +":"▼ ")+Math.abs(total-previous)+" SINCE LAST UPDATE"):"MONITORING SOURCE DATA");
+           v.setTextColor(R.id.widget_delta,sideColor);
+           '''+s[end:]
+          needle='m.updateAppWidget(id,v);'
+          assert s.count(needle)==1
+          s=s.replace(needle,needle+'if(changed) pulse(c,id,ringRes,sideColor);')
+          p.write_text(s)
+          layout=res/'layout/duwm_widget.xml'; x=layout.read_text()
+          assert 'widget_edge' in x
+          # wrap root in an ID-bearing frame; this enables RemoteViews background switching.
+          import re
+          # Normalize the root only; older widget patches may already declare this namespace.
+          opening=re.search(r'<LinearLayout\b[^>]*>',x,re.S)
+          assert opening is not None, 'Expected LinearLayout widget root'
+          tag=opening.group(0)
+          namespace='xmlns:android="http://schemas.android.com/apk/res/android"'
+          tag=re.sub(r'\s+xmlns:android="[^"]*"','',tag)
+          tag=tag.replace('<LinearLayout','<LinearLayout '+namespace,1)
+          if 'android:id=' not in tag:
+              tag=tag.replace('<LinearLayout','<LinearLayout android:id="@+id/widget_frame"',1)
+          else:
+              tag=re.sub(r'android:id="[^"]*"','android:id="@+id/widget_frame"',tag,count=1)
+          x=x[:opening.start()]+tag+x[opening.end():]
+          layout.write_text(x)
+          # Only actual count change triggers brief flashes. This does not invent new data or run continuously.
+          ET.parse(layout)
+          for name in ('duwm_ring_healthy','duwm_ring_new','duwm_ring_offline'): ET.parse(res/'drawable'/f'{name}.xml')
+          assert 'pulse(c,id,ringRes,sideColor)' in s
+          print('PASS: independent ring/side states, three bounded on-change pulses, source-backed figures')
+          PY
+          python3 "$RUNNER_TEMP/raisedpodium9.py" "$PROJECT_DIR"
+      - name: Raisedpodium12 connect widgets to original event updates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$PROJECT_DIR" <<'PYCODE'
+          from pathlib import Path
+          import sys,re,xml.etree.ElementTree as ET
+          root=Path(sys.argv[1]); pkg=root/'app/src/main/java/com/sentongoharuna/worldsituationroom'
+          widget=pkg/'DuwmWidgetProvider.java'; updater=pkg/'DuWidgetUpdater.java'
+          s=widget.read_text(); u=updater.read_text()
+          assert 'WidgetSnapshot.load' in s and 'private static void schedule' in s
+          assert 'private static void renderAll(Context app)' in u
+          assert 'DuWidgetRenderer.render(app' in u
+          # All new widgets now subscribe to the SAME snapshot-update dispatch
+          # already used by the original functional DU widgets.
+          marker=' private static void schedule(Context c,int[] ids)'
+          assert s.count(marker)==1
+          helper=""" public static void refreshAll(Context c){
+            Context app=c.getApplicationContext();
+            AppWidgetManager manager=AppWidgetManager.getInstance(app);
+            for(int category=1;category<=24;category++){
+              try{
+                Class<?> provider=Class.forName(app.getPackageName()+".DuwmWidget"+category);
+                int[] ids=manager.getAppWidgetIds(new ComponentName(app,provider));
+                if(ids!=null && ids.length>0) schedule(app,ids);
+              }catch(ClassNotFoundException e){android.util.Log.w("DUWM24","Missing provider "+category,e);}
+            }
+          }
+          """
+          s=s.replace(marker,helper+marker,1)
+          # Data source updates call the original renderer; extend that dispatch
+          # without touching its existing provider logic.
+          needle='private static void renderAll(Context app) {'
+          assert u.count(needle)==1
+          u=u.replace(needle,needle+'\n        DuwmWidgetProvider.refreshAll(app);',1)
+          # Distinguish no data from an actual zero. A fresh empty feed can be zero;
+          # missing timestamps cannot be claimed live.
+          s=s.replace('else{v.setTextViewText(R.id.widget_value,String.valueOf(total));}',
+                      'else{v.setTextViewText(R.id.widget_value,stamp<=0?"—":String.valueOf(total));}')
+          s=s.replace('"● NO NEW EVENT"','"● NO COUNT CHANGE"')
+          s=s.replace('"SOURCE • "+s.healthBadge()+"  |  "+age',
+                      '"SOURCE • "+(stale?"STALE/UNAVAILABLE":s.healthBadge())+"  |  "+age')
+          # A ring signals source freshness; a side lamp signals a changed count.
+          assert 'ringRes=stale?' in s and 'int sideColor=changed?' in s
+          widget.write_text(s);updater.write_text(u)
+          ET.parse(root/'app/src/main/res/layout/duwm_widget.xml')
+          for name in ('healthy','new','offline'):
+              ET.parse(root/f'app/src/main/res/drawable/duwm_ring_{name}.xml')
+          assert 'DuwmWidgetProvider.refreshAll(app)' in updater.read_text()
+          assert 'public static void refreshAll(Context c)' in widget.read_text()
+          print('PASS: original DU widget update dispatch also refreshes all 24 source-backed widgets')
+          print('PASS: missing source timestamps no longer render as genuine zero')
+          PYCODE
+      - name: Raisedpodium12 static regression checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$PROJECT_DIR" <<'PYCODE'
+          from pathlib import Path
+          import sys,xml.etree.ElementTree as ET
+          root=Path(sys.argv[1]); base=root/'app/src/main'
+          pkg=base/'java/com/sentongoharuna/worldsituationroom'
+          src=(pkg/'DuwmWidgetProvider.java').read_text()
+          assert src.count('int ringRes=')==1, 'duplicate ringRes declaration'
+          assert 'pulse(c,id,ringRes,sideColor)' in src
+          assert 'DuwmWidgetProvider.refreshAll(app)' in (pkg/'DuWidgetUpdater.java').read_text()
+          for i in range(1,25):
+              assert (pkg/f'DuwmWidget{i}.java').is_file()
+              ET.parse(base/f'res/xml/duwm_widget_{i}.xml')
+          ET.parse(base/'res/layout/duwm_widget.xml')
+          print('PASS: 24 widget providers, valid XML, one ringRes declaration, update dispatch')
+          PYCODE
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Lint
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:lintDebug --stacktrace
+      - name: Assemble
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage APK
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk")
+          test "${#APKS[@]}" -eq 1
+          test -s "${APKS[0]}"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${APKS[0]}" "$RUNNER_TEMP/release/RUNNINGBALL2-24-WIDGETS.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Raisedpodium12-SOURCE-EVENT-APK
+          path: ${{ runner.temp }}/release/RUNNINGBALL2-24-WIDGETS.apk
+          if-no-files-found: error
+          retention-days: 14
