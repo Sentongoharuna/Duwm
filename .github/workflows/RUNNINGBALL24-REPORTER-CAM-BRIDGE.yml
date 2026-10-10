@@ -1,0 +1,524 @@
+name: RUNNINGBALL24 REPORTER CAM BRIDGE
+run-name: "RUNNINGBALL24 #${{ github.run_number }}"
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - ".github/workflows/runningball2-live-wallpaper.yml"
+      - "DUWM-1-2-20-2-20-FULL-REGRESSION-FIX2-SOURCE.tar.gz"
+      - ".github/workflows/RUNNINGBALL2-24-WIDGETS-BUILD.yml"
+      - ".github/workflows/RUNNINGBALL24-REPORTER-CAM-BRIDGE.yml"
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact source
+        run: |
+          set -euo pipefail
+          echo "1be8caba512b4fa2430f636fcfc6a4a73a1a484a9d3b64e829f3d3a606e7d32a  DUWM-1-2-20-2-20-FULL-REGRESSION-FIX2-SOURCE.tar.gz" | sha256sum -c -
+      - name: Extract
+        run: |
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-2-20-FULL-REGRESSION-FIX2-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm/world-situation-room-native-1-2-20-2-20" >> "$GITHUB_ENV"
+      - name: Full source-to-Globe regression gate
+        run: |
+          chmod +x "$PROJECT_DIR/scripts/"*.sh
+          "$PROJECT_DIR/scripts/verify-1-2-20-2-20-full-regression.sh" "$PROJECT_DIR"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+      - name: RUNNINGBALL14 add live wallpaper mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom"
+          RES="$PROJECT_DIR/app/src/main/res"
+          MANIFEST="$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          test -s "$PKG/SatelliteMapView.java"
+          test -s "$MANIFEST"
+          GLOBE_BEFORE="$(sha256sum "$PKG/SatelliteMapView.java" | awk '{print $1}')"
+          mkdir -p "$RES/xml" "$RES/values"
+
+          cat > "$PKG/DuwmLiveWallpaperService.java" <<'JAVA'
+          package com.sentongoharuna.worldsituationroom;
+          import android.service.wallpaper.WallpaperService;
+          import android.view.SurfaceHolder;
+          import android.graphics.Canvas;
+          import android.graphics.Paint;
+          import android.graphics.Color;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.os.SystemClock;
+
+          public final class DuwmLiveWallpaperService extends WallpaperService {
+            @Override public Engine onCreateEngine(){ return new GlobeEngine(); }
+            private final class GlobeEngine extends Engine {
+              private final Handler ui=new Handler(Looper.getMainLooper());
+              private final Paint earth=new Paint(Paint.ANTI_ALIAS_FLAG);
+              private final Paint grid=new Paint(Paint.ANTI_ALIAS_FLAG);
+              private final Paint accent=new Paint(Paint.ANTI_ALIAS_FLAG);
+              private boolean visible=false, pending=false;
+              private long lastMs=0L;
+              private double rotation=0.0d;
+              private static final long FRAME_MS=33L;
+
+              private final Runnable tick=new Runnable(){
+                @Override public void run(){
+                  pending=false;
+                  if(!visible)return;
+                  long now=SystemClock.uptimeMillis();
+                  long dt=lastMs==0L?FRAME_MS:Math.min(100L,Math.max(0L,now-lastMs));
+                  lastMs=now;
+                  rotation=(rotation+(dt/1000.0d)*4.0d)%360.0d;
+                  drawGlobe();
+                  schedule();
+                }
+              };
+
+              GlobeEngine(){
+                earth.setColor(Color.rgb(5,18,31)); earth.setStyle(Paint.Style.FILL);
+                grid.setColor(Color.argb(95,58,185,220)); grid.setStyle(Paint.Style.STROKE); grid.setStrokeWidth(1.2f);
+                accent.setColor(Color.rgb(58,220,132)); accent.setStyle(Paint.Style.STROKE); accent.setStrokeWidth(2f);
+              }
+              private void schedule(){ if(!visible||pending)return; pending=true; ui.postDelayed(tick,FRAME_MS); }
+              private void stop(){ visible=false; pending=false; ui.removeCallbacks(tick); }
+              @Override public void onVisibilityChanged(boolean v){ visible=v; if(v){lastMs=0L;schedule();}else stop(); }
+              @Override public void onSurfaceChanged(SurfaceHolder h,int f,int w,int x){super.onSurfaceChanged(h,f,w,x);if(visible)drawGlobe();}
+              @Override public void onSurfaceDestroyed(SurfaceHolder h){stop();super.onSurfaceDestroyed(h);}
+              @Override public void onDestroy(){stop();super.onDestroy();}
+
+              private void drawGlobe(){
+                SurfaceHolder h=getSurfaceHolder(); Canvas c=null;
+                try{
+                  c=h.lockCanvas(); if(c==null)return; c.drawColor(Color.BLACK);
+                  float w=c.getWidth(), ht=c.getHeight(), cx=w*.5f, cy=ht*.48f, r=Math.min(w,ht)*.34f;
+                  c.drawCircle(cx,cy,r,earth);
+                  for(int lat=-60;lat<=60;lat+=30){
+                    float y=cy-(float)Math.sin(Math.toRadians(lat))*r;
+                    float rx=(float)(Math.cos(Math.toRadians(lat))*r);
+                    c.drawOval(cx-rx,y-r*.08f,cx+rx,y+r*.08f,grid);
+                  }
+                  for(int lon=0;lon<180;lon+=30){
+                    double a=Math.toRadians(lon+rotation); float rx=(float)(Math.abs(Math.cos(a))*r);
+                    c.drawOval(cx-rx,cy-r,cx+rx,cy+r,grid);
+                  }
+                  double a=Math.toRadians(rotation);
+                  c.drawCircle(cx+(float)Math.cos(a)*r,cy+(float)Math.sin(a)*r*.25f,7f,accent);
+                } finally { if(c!=null)h.unlockCanvasAndPost(c); }
+              }
+            }
+          }
+          JAVA
+
+          cat > "$PKG/LiveWallpaperLauncherActivity.java" <<'JAVA'
+          package com.sentongoharuna.worldsituationroom;
+          import android.app.Activity;
+          import android.app.WallpaperManager;
+          import android.content.ComponentName;
+          import android.content.Intent;
+          import android.os.Bundle;
+          public final class LiveWallpaperLauncherActivity extends Activity {
+            @Override protected void onCreate(Bundle b){
+              super.onCreate(b);
+              Intent i=new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
+              i.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,new ComponentName(this,DuwmLiveWallpaperService.class));
+              try{startActivity(i);}catch(Throwable t){startActivity(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER));}
+              finish();
+            }
+          }
+          JAVA
+
+          cat > "$RES/xml/duwm_live_wallpaper.xml" <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
+            android:description="@string/duwm_live_wallpaper_description" />
+          XML
+
+          cat > "$RES/values/duwm_live_wallpaper_strings.xml" <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+            <string name="duwm_live_wallpaper_name">DU World Monitor Live Globe</string>
+            <string name="duwm_live_wallpaper_description">Live rotating DU World Monitor globe wallpaper.</string>
+          </resources>
+          XML
+
+          python3 - "$MANIFEST" <<'PY'
+          import pathlib,sys
+          p=pathlib.Path(sys.argv[1]); s=p.read_text()
+          if 'DuwmLiveWallpaperService' not in s:
+              at=s.rfind('</application>')
+              if at<0: raise SystemExit("application close tag missing")
+              block='''\
+              <service android:name=".DuwmLiveWallpaperService" android:exported="true"
+                android:label="@string/duwm_live_wallpaper_name"
+                android:permission="android.permission.BIND_WALLPAPER">
+                <intent-filter><action android:name="android.service.wallpaper.WallpaperService" /></intent-filter>
+                <meta-data android:name="android.service.wallpaper" android:resource="@xml/duwm_live_wallpaper" />
+              </service>
+              <activity android:name=".LiveWallpaperLauncherActivity" android:exported="false" />
+              '''
+              p.write_text(s[:at]+block+s[at:])
+          PY
+
+          GLOBE_AFTER="$(sha256sum "$PKG/SatelliteMapView.java" | awk '{print $1}')"
+          test "$GLOBE_BEFORE" = "$GLOBE_AFTER"
+          echo "RUNNINGBALL14 WORKING GLOBE SOURCE PRESERVED"
+
+      - name: RUNNINGBALL14 wallpaper acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom"
+          MANIFEST="$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          test -s "$PKG/DuwmLiveWallpaperService.java"
+          test -s "$PKG/LiveWallpaperLauncherActivity.java"
+          grep -Fq "FRAME_MS=33L" "$PKG/DuwmLiveWallpaperService.java"
+          grep -Fq "if(!visible||pending)return" "$PKG/DuwmLiveWallpaperService.java"
+          grep -Fq "ui.removeCallbacks(tick)" "$PKG/DuwmLiveWallpaperService.java"
+          grep -Fq "ACTION_CHANGE_LIVE_WALLPAPER" "$PKG/LiveWallpaperLauncherActivity.java"
+          grep -Fq "android.permission.BIND_WALLPAPER" "$MANIFEST"
+          echo "RUNNINGBALL14 LIVE WALLPAPER ACCEPTANCE PASS"
+
+      - name: Add 24 widgets (isolated source patch)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "aW1wb3J0IHBhdGhsaWIsc3lzLHhtbC5ldHJlZS5FbGVtZW50VHJlZSBhcyBFVApyb290PXBhdGhsaWIuUGF0aChzeXMuYXJndlsxXSk7IHBrZz1yb290LydhcHAvc3JjL21haW4vamF2YS9jb20vc2VudG9uZ29oYXJ1bmEvd29ybGRzaXR1YXRpb25yb29tJztyZXM9cm9vdC8nYXBwL3NyYy9tYWluL3Jlcyc7bWFuaWZlc3Q9cm9vdC8nYXBwL3NyYy9tYWluL0FuZHJvaWRNYW5pZmVzdC54bWwnCmFzc2VydCAocGtnLydTYXRlbGxpdGVNYXBWaWV3LmphdmEnKS5pc19maWxlKCkKbmFtZXM9WydXb3JsZCBNb25pdG9yJywnQXZpYXRpb24gTW9uaXRvcicsJ01hcml0aW1lIE1vbml0b3InLCdCcmVha2luZyBOZXdzJywnR2xvYmFsIEludGVsbGlnZW5jZScsJ1dlYXRoZXIgTW9uaXRvcicsJ0VhcnRocXVha2UgTW9uaXRvcicsJ1JhZGlvIE1vbml0b3InLCdMaXZlIFRlbGV2aXNpb24nLCdMaXZlIENhbWVyYXMnLCdTYXRlbGxpdGUgTW9uaXRvcicsJ0VtZXJnZW5jeSBNb25pdG9yJywnQWZyaWNhIE1vbml0b3InLCdVZ2FuZGEgTW9uaXRvcicsJ0dsb2JhbCBTdGF0aXN0aWNzJywnQWlycG9ydCBNb25pdG9yJywnUG9ydCBNb25pdG9yJywnTG9jYXRpb24gTW9uaXRvcicsJ0xvY2FsIFJlcG9ydGVycycsJ1NlYXJjaCBNb25pdG9yJywnVHJlbmRpbmcgRXZlbnRzJywnV29ybGQgQ2xvY2snLCdDb3VudHJ5IE1vbml0b3InLCdEYXRhIFNvdXJjZSBTdGF0dXMnXQoocmVzLydsYXlvdXQnKS5ta2RpcihwYXJlbnRzPVRydWUsZXhpc3Rfb2s9VHJ1ZSk7KHJlcy8neG1sJykubWtkaXIoZXhpc3Rfb2s9VHJ1ZSkKKHJlcy8nbGF5b3V0L2R1d21fd2lkZ2V0LnhtbCcpLndyaXRlX3RleHQoJzxMaW5lYXJMYXlvdXQgeG1sbnM6YW5kcm9pZD0iaHR0cDovL3NjaGVtYXMuYW5kcm9pZC5jb20vYXBrL3Jlcy9hbmRyb2lkIiBhbmRyb2lkOm9yaWVudGF0aW9uPSJ2ZXJ0aWNhbCIgYW5kcm9pZDpwYWRkaW5nPSIxMmRwIiBhbmRyb2lkOmJhY2tncm91bmQ9IiMwNzE1MjIiIGFuZHJvaWQ6bGF5b3V0X3dpZHRoPSJtYXRjaF9wYXJlbnQiIGFuZHJvaWQ6bGF5b3V0X2hlaWdodD0ibWF0Y2hfcGFyZW50Ij48VGV4dFZpZXcgYW5kcm9pZDppZD0iQCtpZC93aWRnZXRfdGl0bGUiIGFuZHJvaWQ6dGV4dENvbG9yPSIjNjVFNEI1IiBhbmRyb2lkOnRleHRTaXplPSIxNnNwIiBhbmRyb2lkOmxheW91dF93aWR0aD0ibWF0Y2hfcGFyZW50IiBhbmRyb2lkOmxheW91dF9oZWlnaHQ9IndyYXBfY29udGVudCIvPjxUZXh0VmlldyBhbmRyb2lkOmlkPSJAK2lkL3dpZGdldF92YWx1ZSIgYW5kcm9pZDp0ZXh0Q29sb3I9IiNGRkZGRkYiIGFuZHJvaWQ6dGV4dFNpemU9IjE0c3AiIGFuZHJvaWQ6bGF5b3V0X3dpZHRoPSJtYXRjaF9wYXJlbnQiIGFuZHJvaWQ6bGF5b3V0X2hlaWdodD0id3JhcF9jb250ZW50Ii8+PFRleHRWaWV3IGFuZHJvaWQ6aWQ9IkAraWQvd2lkZ2V0X3VwZGF0ZWQiIGFuZHJvaWQ6dGV4dENvbG9yPSIjQjNDNkQ1IiBhbmRyb2lkOnRleHRTaXplPSIxMXNwIiBhbmRyb2lkOmxheW91dF93aWR0aD0ibWF0Y2hfcGFyZW50IiBhbmRyb2lkOmxheW91dF9oZWlnaHQ9IndyYXBfY29udGVudCIvPjwvTGluZWFyTGF5b3V0PicpCnByb3ZpZGVyPScnJ3BhY2thZ2UgY29tLnNlbnRvbmdvaGFydW5hLndvcmxkc2l0dWF0aW9ucm9vbTsKaW1wb3J0IGFuZHJvaWQuYXBwLlBlbmRpbmdJbnRlbnQ7CmltcG9ydCBhbmRyb2lkLmFwcHdpZGdldC4qOwppbXBvcnQgYW5kcm9pZC5jb250ZW50Lio7CmltcG9ydCBhbmRyb2lkLndpZGdldC5SZW1vdGVWaWV3czsKcHVibGljIGNsYXNzIER1d21XaWRnZXRQcm92aWRlciBleHRlbmRzIEFwcFdpZGdldFByb3ZpZGVyIHsKIHB1YmxpYyBzdGF0aWMgZmluYWwgU3RyaW5nW10gVElUTEVTPXtUSVRMRVN9OwogQE92ZXJyaWRlIHB1YmxpYyB2b2lkIG9uVXBkYXRlKENvbnRleHQgYyxBcHBXaWRnZXRNYW5hZ2VyIG0saW50W10gaWRzKXtmb3IoaW50IGlkOmlkcyl7QXBwV2lkZ2V0UHJvdmlkZXJJbmZvIGluZm89bS5nZXRBcHBXaWRnZXRJbmZvKGlkKTtpZihpbmZvPT1udWxsKWNvbnRpbnVlO1N0cmluZyBuYW1lPWluZm8ucHJvdmlkZXIuZ2V0Q2xhc3NOYW1lKCk7aW50IGlkeD0wO3RyeXtpZHg9SW50ZWdlci5wYXJzZUludChuYW1lLnN1YnN0cmluZyhuYW1lLmxhc3RJbmRleE9mKCJEdXdtV2lkZ2V0IikrMTApKS0xO31jYXRjaChFeGNlcHRpb24gaWdub3JlZCl7fWlmKGlkeDwwfHxpZHg+PVRJVExFUy5sZW5ndGgpaWR4PTA7CiBTaGFyZWRQcmVmZXJlbmNlcyBwPWMuZ2V0U2hhcmVkUHJlZmVyZW5jZXMoImR1d21fd2lkZ2V0X3ZlcmlmaWVkX2RhdGEiLENvbnRleHQuTU9ERV9QUklWQVRFKTsKIFJlbW90ZVZpZXdzIHY9bmV3IFJlbW90ZVZpZXdzKGMuZ2V0UGFja2FnZU5hbWUoKSxSLmxheW91dC5kdXdtX3dpZGdldCk7CiB2LnNldFRleHRWaWV3VGV4dChSLmlkLndpZGdldF90aXRsZSxUSVRMRVNbaWR4XSk7di5zZXRUZXh0Vmlld1RleHQoUi5pZC53aWRnZXRfdmFsdWUscC5nZXRTdHJpbmcoInZhbHVlXyIraWR4LCJPcGVuIGFwcCB0byB2aWV3IGN1cnJlbnQgaW5mb3JtYXRpb24iKSk7di5zZXRUZXh0Vmlld1RleHQoUi5pZC53aWRnZXRfdXBkYXRlZCxwLmdldFN0cmluZygidXBkYXRlZF8iK2lkeCwiTm8gdmVyaWZpZWQgdXBkYXRlIGF2YWlsYWJsZSIpKTsKIEludGVudCBsYXVuY2g9Yy5nZXRQYWNrYWdlTWFuYWdlcigpLmdldExhdW5jaEludGVudEZvclBhY2thZ2UoYy5nZXRQYWNrYWdlTmFtZSgpKTtpZihsYXVuY2ghPW51bGwpe2xhdW5jaC5wdXRFeHRyYSgiZHV3bV93aWRnZXRfY2F0ZWdvcnkiLGlkeCk7UGVuZGluZ0ludGVudCBwaT1QZW5kaW5nSW50ZW50LmdldEFjdGl2aXR5KGMsaWQsbGF1bmNoLFBlbmRpbmdJbnRlbnQuRkxBR19VUERBVEVfQ1VSUkVOVHxQZW5kaW5nSW50ZW50LkZMQUdfSU1NVVRBQkxFKTt2LnNldE9uQ2xpY2tQZW5kaW5nSW50ZW50KFIuaWQud2lkZ2V0X3RpdGxlLHBpKTt2LnNldE9uQ2xpY2tQZW5kaW5nSW50ZW50KFIuaWQud2lkZ2V0X3ZhbHVlLHBpKTt9bS51cGRhdGVBcHBXaWRnZXQoaWQsdik7fX0KfQonJycucmVwbGFjZSgnVElUTEVTJywnLCcuam9pbignIicrbisnIicgZm9yIG4gaW4gbmFtZXMpLDEpCiMgcmVwYWlyIHJlcGxhY2VtZW50IHRhcmdldHMgZGVjbGFyYXRpb24gb25seQpwcm92aWRlcj1wcm92aWRlci5yZXBsYWNlKCdwdWJsaWMgc3RhdGljIGZpbmFsIFN0cmluZ1tdICcrJywnLmpvaW4oJyInK24rJyInIGZvciBuIGluIG5hbWVzKSsnPXtUSVRMRVN9OycsJ3B1YmxpYyBzdGF0aWMgZmluYWwgU3RyaW5nW10gVElUTEVTPXsnKycsJy5qb2luKCciJytuKyciJyBmb3IgbiBpbiBuYW1lcykrJ307JykKKHBrZy8nRHV3bVdpZGdldFByb3ZpZGVyLmphdmEnKS53cml0ZV90ZXh0KHByb3ZpZGVyKQpmb3IgaSxuIGluIGVudW1lcmF0ZShuYW1lcywxKToKIChwa2cvZidEdXdtV2lkZ2V0e2l9LmphdmEnKS53cml0ZV90ZXh0KGYncGFja2FnZSBjb20uc2VudG9uZ29oYXJ1bmEud29ybGRzaXR1YXRpb25yb29tO1xucHVibGljIGZpbmFsIGNsYXNzIER1d21XaWRnZXR7aX0gZXh0ZW5kcyBEdXdtV2lkZ2V0UHJvdmlkZXIge3t9fVxuJykKIChyZXMvJ3htbCcvZidkdXdtX3dpZGdldF97aX0ueG1sJykud3JpdGVfdGV4dChmJzw/eG1sIHZlcnNpb249IjEuMCIgZW5jb2Rpbmc9InV0Zi04Ij8+PGFwcHdpZGdldC1wcm92aWRlciB4bWxuczphbmRyb2lkPSJodHRwOi8vc2NoZW1hcy5hbmRyb2lkLmNvbS9hcGsvcmVzL2FuZHJvaWQiIGFuZHJvaWQ6bWluV2lkdGg9IjE4MGRwIiBhbmRyb2lkOm1pbkhlaWdodD0iMTAwZHAiIGFuZHJvaWQ6aW5pdGlhbExheW91dD0iQGxheW91dC9kdXdtX3dpZGdldCIgYW5kcm9pZDp1cGRhdGVQZXJpb2RNaWxsaXM9IjE4MDAwMDAiIGFuZHJvaWQ6cmVzaXplTW9kZT0iaG9yaXpvbnRhbHx2ZXJ0aWNhbCIgYW5kcm9pZDp3aWRnZXRDYXRlZ29yeT0iaG9tZV9zY3JlZW4iLz4nKQoocmVzLyd2YWx1ZXMvZHV3bV93aWRnZXRfbGFiZWxzLnhtbCcpLndyaXRlX3RleHQoJzxyZXNvdXJjZXM+JysnJy5qb2luKGYnPHN0cmluZyBuYW1lPSJkdXdtX3dpZGdldF9sYWJlbF97aX0iPkRVV00ge259PC9zdHJpbmc+JyBmb3IgaSxuIGluIGVudW1lcmF0ZShuYW1lcywxKSkrJzwvcmVzb3VyY2VzPicpCkVULnJlZ2lzdGVyX25hbWVzcGFjZSgnYW5kcm9pZCcsJ2h0dHA6Ly9zY2hlbWFzLmFuZHJvaWQuY29tL2Fway9yZXMvYW5kcm9pZCcpO3RyZWU9RVQucGFyc2UobWFuaWZlc3QpO2FwcD10cmVlLmdldHJvb3QoKS5maW5kKCdhcHBsaWNhdGlvbicpO2Fzc2VydCBhcHAgaXMgbm90IE5vbmU7QT0ne2h0dHA6Ly9zY2hlbWFzLmFuZHJvaWQuY29tL2Fway9yZXMvYW5kcm9pZH0nCmZvciBpIGluIHJhbmdlKDEsMjUpOgogcmVjZWl2ZXI9RVQuU3ViRWxlbWVudChhcHAsJ3JlY2VpdmVyJyx7QSsnbmFtZSc6ZicuRHV3bVdpZGdldHtpfScsQSsnbGFiZWwnOmYnQHN0cmluZy9kdXdtX3dpZGdldF9sYWJlbF97aX0nLEErJ2V4cG9ydGVkJzondHJ1ZSd9KTtmPUVULlN1YkVsZW1lbnQocmVjZWl2ZXIsJ2ludGVudC1maWx0ZXInKTtFVC5TdWJFbGVtZW50KGYsJ2FjdGlvbicse0ErJ25hbWUnOidhbmRyb2lkLmFwcHdpZGdldC5hY3Rpb24uQVBQV0lER0VUX1VQREFURSd9KTtFVC5TdWJFbGVtZW50KHJlY2VpdmVyLCdtZXRhLWRhdGEnLHtBKyduYW1lJzonYW5kcm9pZC5hcHB3aWRnZXQucHJvdmlkZXInLEErJ3Jlc291cmNlJzpmJ0B4bWwvZHV3bV93aWRnZXRfe2l9J30pCnRyZWUud3JpdGUobWFuaWZlc3QsZW5jb2Rpbmc9J3VuaWNvZGUnLHhtbF9kZWNsYXJhdGlvbj1UcnVlKQpwcmludCgnMjQgd2lkZ2V0cyByZWdpc3RlcmVkJykK" | base64 -d > "$RUNNER_TEMP/widget_patch.py"
+          python3 "$RUNNER_TEMP/widget_patch.py" "$PROJECT_DIR"
+      - name: Reuse original widget renderer for all 24 categories
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/duwm_original_bridge.py" <<'PY'
+          import pathlib,sys
+          p=pathlib.Path(sys.argv[1]); pkg=p/'app/src/main/java/com/sentongoharuna/worldsituationroom'
+          required=['DuWidgetRenderer.java','DuWidgetUpdater.java','DuWidgetContract.java','DuWidgetPreferences.java','WidgetSnapshot.java','DuwmWidgetProvider.java']
+          for f in required:
+              assert (pkg/f).is_file(), 'Missing original engine: '+f
+          renderer=(pkg/'DuWidgetRenderer.java').read_text()
+          updater=(pkg/'DuWidgetUpdater.java').read_text()
+          assert 'RemoteViews render(Context context, int widgetId' in renderer
+          assert 'private static void renderAll(Context app)' in updater
+          assert 'WidgetSnapshot snapshot = WidgetSnapshot.load(app);' in updater
+          assert 'DuWidgetContract.Kind.values()' in updater
+          assert 'public static void updateAll(Context context)' in updater
+          # Each new widget reuses the original rich renderer and snapshot, rather than a parallel zero-count renderer.
+          source="""package com.sentongoharuna.worldsituationroom;
+          import android.appwidget.AppWidgetManager;
+          import android.appwidget.AppWidgetProvider;
+          import android.appwidget.AppWidgetProviderInfo;
+          import android.content.ComponentName;
+          import android.content.Context;
+          import android.os.Bundle;
+          import android.util.Log;
+          import android.widget.RemoteViews;
+          public class DuwmWidgetProvider extends AppWidgetProvider {
+           private static final String TAG="DUWM-OriginalEngineBridge";
+           private static final DuWidgetContract.Kind[] KINDS={KINDS};
+           private static DuWidgetContract.Kind kind(int i){return KINDS[Math.max(0,Math.min(i,KINDS.length-1))];}
+           public static void updateExtended(Context context, AppWidgetManager manager, WidgetSnapshot snapshot){
+            DuWidgetPreferences profiles=new DuWidgetPreferences(context);
+            for(int index=1;index<=24;index++){
+             try{
+              Class<?> cls=Class.forName(context.getPackageName()+".DuwmWidget"+index);
+              ComponentName component=new ComponentName(context,cls);
+              for(int id:manager.getAppWidgetIds(component)){
+               DuWidgetContract.Kind k=kind(index-1);
+               try{
+                Bundle options=manager.getAppWidgetOptions(id);
+                RemoteViews views=DuWidgetRenderer.render(context,id,k,profiles.load(id,k),snapshot,options);
+                manager.updateAppWidget(id,views);
+               }catch(RuntimeException e){Log.e(TAG,"Widget "+index+" render failed",e);
+                manager.updateAppWidget(id,DuWidgetRenderer.renderStarting(context,id,k,true));}
+              }
+             }catch(ClassNotFoundException e){Log.e(TAG,"Missing widget provider "+index,e);}
+            }
+           }
+           @Override public void onUpdate(Context context,AppWidgetManager manager,int[] ids){
+            DuWidgetUpdater.updateAll(context);
+           }
+           @Override public void onAppWidgetOptionsChanged(Context context,AppWidgetManager manager,int id,Bundle options){
+            DuWidgetUpdater.updateAll(context);
+           }
+          }
+          """
+          names=['COMMAND','AIR_SEA','AIR_SEA','WIRE','SOURCE_MATRIX','HAZARDS','HAZARDS','MEDIA','MEDIA','MEDIA','ORBIT_WATCH','ALERT','LOCAL','LOCAL_NEWS','COUNTERS','AIR_SEA','AIR_SEA','LOCAL','MONITOR_STORIES','SOURCE_MATRIX','WORLD_PULSE','COMMAND','LOCAL','SOURCE_MATRIX']
+          assert len(names)==24
+          source=source.replace('={KINDS};', '={'+','.join('DuWidgetContract.Kind.'+x for x in names)+'};',1)
+          assert 'Kind[] KINDS={' in source and '={KINDS}' not in source
+          (pkg/'DuwmWidgetProvider.java').write_text(source)
+          # Add the new providers to the SAME snapshot-driven dispatcher as the working widgets.
+          needle="        for (DuWidgetContract.Kind kind : DuWidgetContract.Kind.values()) {"
+          assert updater.count(needle)>=1
+          start=updater.index('private static void renderAll(Context app)')
+          anchor=updater.index(needle,start)
+          # Insert just after the existing kind loop, before renderAll closes.
+          opening=updater.index('{',anchor); depth=1; pos=opening+1
+          while depth:
+              if updater[pos]=='{': depth+=1
+              elif updater[pos]=='}': depth-=1
+              pos+=1
+          updater=updater[:pos]+"\n        DuwmWidgetProvider.updateExtended(app, manager, snapshot);"+updater[pos:]
+          (pkg/'DuWidgetUpdater.java').write_text(updater)
+          assert 'DuwmWidgetProvider.updateExtended(app, manager, snapshot)' in updater
+          assert 'DuWidgetRenderer.render(context,id,k,profiles.load(id,k),snapshot,options)' in source
+          print('PASS: 24 new widgets use original rich renderer and shared snapshot dispatcher')
+          PY
+          python3 "$RUNNER_TEMP/duwm_original_bridge.py" "$PROJECT_DIR"
+      - name: Add public source diagnostics (isolated, opt-in)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG="$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom"
+          MANIFEST="$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          test -f "$PKG/MainActivity.java"
+          cat > "$PKG/DuwmSourceStatusActivity.java" <<'JAVA'
+          package com.sentongoharuna.worldsituationroom;
+          
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.graphics.Color;
+          import android.view.View;
+          import android.widget.Button;
+          import android.widget.LinearLayout;
+          import android.widget.ScrollView;
+          import android.widget.TextView;
+          import android.os.Handler;
+          import android.os.Looper;
+          import java.net.HttpURLConnection;
+          import java.net.URL;
+          import java.io.ByteArrayOutputStream;
+          import java.io.InputStream;
+          import java.nio.charset.StandardCharsets;
+          import java.util.concurrent.ExecutorService;
+          import java.util.concurrent.Executors;
+          import org.json.JSONObject;
+          import org.json.JSONArray;
+          
+          /** Independent, opt-in diagnostics screen. No changes to existing DUWM data or widgets. */
+          public final class DuwmSourceStatusActivity extends Activity {
+            private final Handler main = new Handler(Looper.getMainLooper());
+            private final ExecutorService io = Executors.newFixedThreadPool(2);
+            private LinearLayout list;
+            private final String[] names={"Weather / Open-Meteo", "Earthquakes / USGS", "NASA / EONET", "News / GDELT DOC"};
+            private final String[] urls={
+              "https://api.open-meteo.com/v1/forecast?latitude=0.3476&longitude=32.5825&current=temperature_2m,relative_humidity_2m",
+              "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson",
+              "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=20",
+              "https://api.gdeltproject.org/api/v2/doc/doc?query=africa&mode=ArtList&maxrecords=10&format=json"
+            };
+            private final TextView[] statuses = new TextView[4];
+            @Override public void onCreate(Bundle b){super.onCreate(b);
+              ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(Color.rgb(5,16,27));
+              list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);list.setPadding(24,30,24,30);
+              scroll.addView(list);setContentView(scroll);
+              TextView title=text("DUWM • INFORMATION SOURCES",21,0xff79e7ff);list.addView(title);
+              TextView note=text("Real public endpoints • last checked on this device • no invented counts",12,0xffa8c5d0);list.addView(note);
+              Button refresh=new Button(this);refresh.setText("CHECK SOURCES");list.addView(refresh);
+              for(int i=0;i<names.length;i++){
+                TextView name=text(names[i],16,0xffe0f7ff);name.setPadding(0,22,0,2);list.addView(name);
+                statuses[i]=text("NOT CHECKED",13,0xffa5aeb8);list.addView(statuses[i]);
+              }
+              refresh.setOnClickListener(v->check());check();
+            }
+            private TextView text(String value,int size,int color){TextView v=new TextView(this);v.setText(value);v.setTextSize(size);v.setTextColor(color);v.setPadding(0,7,0,7);return v;}
+            private void check(){for(int i=0;i<urls.length;i++){final int index=i;statuses[i].setText("REQUESTING…");statuses[i].setTextColor(0xff79d7ff);
+              io.execute(()->{
+                try{
+                  String raw=fetch(urls[index]);JSONObject json=new JSONObject(raw);
+                  String summary=summarize(index,json);
+                  main.post(()->{if(!isFinishing()){statuses[index].setText("RECEIVED • "+summary+"\nChecked "+new java.text.SimpleDateFormat("HH:mm:ss",java.util.Locale.US).format(new java.util.Date()));statuses[index].setTextColor(0xff7bf0a6);}});
+                }catch(Exception e){String message=e.getClass().getSimpleName()+": "+e.getMessage();main.post(()->{if(!isFinishing()){statuses[index].setText("UNAVAILABLE • "+message);statuses[index].setTextColor(0xffffbd72);}});}
+              });
+            }}
+            private static String fetch(String endpoint)throws Exception{
+              HttpURLConnection c=(HttpURLConnection)new URL(endpoint).openConnection();
+              c.setConnectTimeout(9000);c.setReadTimeout(12000);c.setRequestProperty("User-Agent","DUWorldMonitor/1.0 (+public source diagnostics)");
+              try{int status=c.getResponseCode();if(status!=200)throw new java.io.IOException("HTTP "+status);
+                try(InputStream in=c.getInputStream();ByteArrayOutputStream out=new ByteArrayOutputStream()){
+                  byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1){if(out.size()+n>1024*1024)throw new java.io.IOException("Response exceeds 1MB");out.write(buf,0,n);}
+                  return new String(out.toByteArray(),StandardCharsets.UTF_8);
+                }
+              }finally{c.disconnect();}
+            }
+            private static String summarize(int type,JSONObject json)throws Exception{
+              switch(type){
+                case 0:JSONObject current=json.getJSONObject("current");return "Kampala "+current.getDouble("temperature_2m")+"°C • RH "+current.getInt("relative_humidity_2m")+"%";
+                case 1:return json.getJSONArray("features").length()+" earthquake records (past day)";
+                case 2:return json.getJSONArray("events").length()+" open-event records returned";
+                case 3:JSONArray articles=json.optJSONArray("articles");return (articles==null?0:articles.length())+" article records returned";
+                default:throw new IllegalArgumentException("Unknown source");
+              }
+            }
+            @Override protected void onDestroy(){io.shutdownNow();super.onDestroy();}
+          }
+          JAVA
+          python3 - "$MANIFEST" <<'PYCODE'
+          import sys,xml.etree.ElementTree as ET
+          path=sys.argv[1]
+          ET.register_namespace('android','http://schemas.android.com/apk/res/android')
+          tree=ET.parse(path);root=tree.getroot();app=root.find('application')
+          assert app is not None
+          a='{http://schemas.android.com/apk/res/android}'
+          if not any(x.get(a+'name')=='.DuwmSourceStatusActivity' for x in app.findall('activity')):
+              act=ET.SubElement(app,'activity',{a+'name':'.DuwmSourceStatusActivity',a+'exported':'true',a+'label':'DUWM Information Sources'})
+              filt=ET.SubElement(act,'intent-filter')
+              ET.SubElement(filt,'action',{a+'name':'android.intent.action.MAIN'})
+              ET.SubElement(filt,'category',{a+'name':'android.intent.category.LAUNCHER'})
+          if not any(x.get(a+'name')=='android.permission.INTERNET' for x in root.findall('uses-permission')):
+              root.insert(0,ET.Element('uses-permission',{a+'name':'android.permission.INTERNET'}))
+          tree.write(path,encoding='unicode',xml_declaration=True)
+          ET.parse(path)
+          print('PASS: independent source screen and Internet permission registered')
+          PYCODE
+          grep -Fq 'class DuwmSourceStatusActivity' "$PKG/DuwmSourceStatusActivity.java"
+      - name: Integrate Information Sources into main app
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$PROJECT_DIR" <<'PYMAIN'
+          from pathlib import Path
+          import sys
+          base=Path(sys.argv[1])
+          file=base/'app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java'
+          source=file.read_text()
+          anchor='        root.addView(commandDeck, new LinearLayout.LayoutParams(\n                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));\n        setContentView(root);'
+          assert source.count(anchor)==1, 'MainActivity UI anchor changed: stop without editing'
+          assert 'DuwmSourceStatusActivity' not in source, 'Already integrated: stop to prevent duplicate button'
+          replacement='        root.addView(commandDeck, new LinearLayout.LayoutParams(\n                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));\n        // Additional source diagnostics entry. Original command deck is unchanged.\n        Button sourceButton = actionButton("INFORMATION SOURCES  •  WEATHER / QUAKES / NASA / NEWS", CYAN);\n        sourceButton.setContentDescription("Open DU World Monitor public information sources");\n        sourceButton.setOnClickListener(view -> startActivity(\n                new Intent(this, DuwmSourceStatusActivity.class)));\n        root.addView(sourceButton, new LinearLayout.LayoutParams(\n                ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));\n        setContentView(root);'
+          source=source.replace(anchor,replacement,1)
+          file.write_text(source)
+          assert source.count('new Intent(this, DuwmSourceStatusActivity.class)')==1
+          print('PASS: visible source button wired to DuwmSourceStatusActivity')
+          PYMAIN
+      - name: Extend existing crawl across full screen width
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/MainActivity.java" <<'PYEDGE'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1])
+          s=p.read_text()
+          old='crawlParams.setMargins(wideLayout ? dp(148) : dp(12), 0,\n                wideLayout ? dp(148) : dp(12), dp(wideLayout ? 46 : 29));'
+          new='crawlParams.setMargins(0, 0, 0, dp(wideLayout ? 46 : 29));'
+          assert s.count(old)==1, 'Expected original crawl margins not found exactly once; stopping safely'
+          s=s.replace(old,new,1)
+          # Remove inset padding on existing crawl, without touching its source-backed content.
+          old_pad='crawlText.setPadding(dp(10), 0, dp(10), 0);'
+          assert s.count(old_pad)==1, 'Original crawl padding not found exactly once'
+          s=s.replace(old_pad,'crawlText.setPadding(0, 0, 0, 0);',1)
+          assert 'crawlText.setMarqueeRepeatLimit(-1);' in s
+          assert 'crawlText.setSelected(true);' in s
+          p.write_text(s)
+          print('PASS: existing source-backed crawl spans screen width with zero horizontal inset')
+          PYEDGE
+      - name: Integrate Reporter Cam bridge without replacing original camera
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/duwm_reporter_bridge_patch.py" <<'PYREPORTER'
+          from pathlib import Path
+          import sys
+          p=Path(sys.argv[1])/'app/src/main/java/com/sentongoharuna/worldsituationroom/LocalMonitorActivity.java'
+          s=p.read_text()
+          assert s.count('    private void showCreateMenu() {')==1
+          assert s.count('    private void startCameraCapture(int durationSeconds) {')==1
+          assert 'rb24LaunchFiveMods' not in s
+          anchor='        choices.add("Record a video report");'
+          assert s.count(anchor)==1
+          s=s.replace(anchor,'        choices.add("REPORTER CAM • Five Mods (installed app)");\n'+anchor,1)
+          old='''                    if (which == 0) showRecordDurationMenu();
+                              else if (which == 1) pickVideo();
+                              else if (which == 2) showGoLive();
+                              else showDrafts();'''
+          assert s.count(old)==1
+          new='''                    if (which == 0) rb24LaunchFiveMods();
+                              else if (which == 1) showRecordDurationMenu();
+                              else if (which == 2) pickVideo();
+                              else if (which == 3) showGoLive();
+                              else showDrafts();'''
+          s=s.replace(old,new,1)
+          anchor='    private void startCameraCapture(int durationSeconds) {'
+          method='''    // Reporter Cam bridge: preserve all existing DUWM capture/upload functionality.
+              // Five Mods is a separate application until its verified camera source is integrated.
+              private void rb24LaunchFiveMods() {
+                  final String cameraPackage = "com.sentongoharuna.pulse";
+                  Intent launch = getPackageManager().getLaunchIntentForPackage(cameraPackage);
+                  if (launch == null) {
+                      new AlertDialog.Builder(this)
+                              .setTitle("Reporter Cam unavailable")
+                              .setMessage("Five Mods camera is not installed or is not visible on this device. "
+                                      + "Use Record a video report for the existing camera, or choose an existing Five Mods recording.")
+                              .setPositiveButton("RECORD VIDEO", (dialog, which) -> showRecordDurationMenu())
+                              .setNeutralButton("CHOOSE VIDEO", (dialog, which) -> pickVideo())
+                              .setNegativeButton("CANCEL", null).show();
+                      return;
+                  }
+                  new AlertDialog.Builder(this)
+                          .setTitle("Five Mods Reporter Cam")
+                          .setMessage("Open the installed Five Mods camera and record with its existing modes. "
+                                  + "After saving your video, return here and choose the recording to attach to a Monitor Report. "
+                                  + "This build does not claim direct camera-module integration.")
+                          .setPositiveButton("OPEN FIVE MODS", (dialog, which) -> {
+                              try { startActivity(launch); }
+                              catch (Exception error) {
+                                  Toast.makeText(this, "Unable to open Five Mods: " + error.getMessage(), Toast.LENGTH_LONG).show();
+                              }
+                          })
+                          .setNeutralButton("CHOOSE SAVED VIDEO", (dialog, which) -> pickVideo())
+                          .setNegativeButton("CANCEL", null).show();
+              }
+          
+          '''
+          s=s.replace(anchor,method+anchor,1)
+          p.write_text(s)
+          manifest=p.parents[3]/'AndroidManifest.xml'
+          # p .../app/src/main/java/com/... => parents[3] is main? verify below
+          manifest=p.parents[3]/'AndroidManifest.xml'
+          if not manifest.exists(): manifest=p.parents[4]/'AndroidManifest.xml'
+          assert manifest.exists(),str(manifest)
+          import xml.etree.ElementTree as ET
+          ET.register_namespace('android','http://schemas.android.com/apk/res/android')
+          tree=ET.parse(manifest); root=tree.getroot(); ns='{http://schemas.android.com/apk/res/android}'
+          queries=root.find('queries')
+          if queries is None: queries=ET.Element('queries');root.insert(0,queries)
+          if not any(el.get(ns+'name')=='com.sentongoharuna.pulse' for el in queries.findall('package')):
+              ET.SubElement(queries,'package',{ns+'name':'com.sentongoharuna.pulse'})
+          tree.write(manifest,encoding='utf-8',xml_declaration=True)
+          ET.parse(manifest)
+          print('PASS Reporter Cam bridge and manifest visibility; original recording/upload paths preserved')
+          PYREPORTER
+          python3 "$RUNNER_TEMP/duwm_reporter_bridge_patch.py" "$PROJECT_DIR"
+          grep -Fq 'rb24LaunchFiveMods' "$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom/LocalMonitorActivity.java"
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac --stacktrace
+      - name: Lint
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:lintDebug --stacktrace
+      - name: Assemble
+        run: cd "$PROJECT_DIR" && gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+      - name: Stage APK
+        run: |
+          set -euo pipefail
+          mapfile -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name "*.apk")
+          test "${#APKS[@]}" -eq 1
+          test -s "${APKS[0]}"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "${APKS[0]}" "$RUNNER_TEMP/release/RUNNINGBALL24-REPORTER-CAM-BRIDGE.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RUNNINGBALL24-REPORTER-CAM-BRIDGE-APK
+          path: ${{ runner.temp }}/release/RUNNINGBALL24-REPORTER-CAM-BRIDGE.apk
+          if-no-files-found: error
+          retention-days: 14
