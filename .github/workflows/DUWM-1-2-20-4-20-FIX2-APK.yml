@@ -1,0 +1,50 @@
+name: DUWM 1.2-20-4-20 FIX2 APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/DUWM-1-2-20-4-20-FIX2-APK.yml'
+      - 'DUWM-1-2-20-4-20-FIX2-SOURCE.tar.gz'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source
+        run: echo 'f347ee300efb9ff9ab6d92c417d6a6b8a7b2f65dc2d34d403d5279f75830b302  DUWM-1-2-20-4-20-FIX2-SOURCE.tar.gz' | sha256sum -c -
+      - name: Extract source
+        run: |
+          mkdir -p "$RUNNER_TEMP/duwm"
+          tar -xzf DUWM-1-2-20-4-20-FIX2-SOURCE.tar.gz -C "$RUNNER_TEMP/duwm"
+          echo "PROJECT_DIR=$RUNNER_TEMP/duwm/DUWM-1-2-20-4-20-FIX2-PROJECT" >> "$GITHUB_ENV"
+      - name: Original globe integrity
+        run: bash "$PROJECT_DIR/scripts/verify-fix2.sh" "$PROJECT_DIR"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Compile
+        run: cd "$PROJECT_DIR" && gradle --no-daemon :app:compileDebugJavaWithJavac
+      - name: Lint
+        run: cd "$PROJECT_DIR" && gradle --no-daemon :app:lintDebug
+      - name: Assemble
+        run: cd "$PROJECT_DIR" && gradle --no-daemon :app:assembleDebug
+      - name: Stage APK
+        run: |
+          mkdir -p "$RUNNER_TEMP/apk"
+          mapfile -t apks < <(find "$PROJECT_DIR/app/build/outputs/apk" -name '*.apk' -type f)
+          test "${#apks[@]}" -eq 1
+          cp "${apks[0]}" "$RUNNER_TEMP/apk/DUWM-FIX2.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-FIX2-APK
+          path: ${{ runner.temp }}/apk/DUWM-FIX2.apk
+          if-no-files-found: error
