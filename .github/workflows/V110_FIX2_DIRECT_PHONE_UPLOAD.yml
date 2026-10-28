@@ -1,0 +1,375 @@
+name: RUNNINGBALL2 V110 FIX1 FULL PREVIOUS DEVELOPMENTS + LOGO
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/V110_FIX2_DIRECT_PHONE_UPLOAD.yml"
+
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Preserve V109 complete engine, install DEVELOP.UGANDA logo, verify APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - name: Checkout current DUWM repository (source workflow and assets)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact protected original RUNNINGBALL2 baseline
+        uses: actions/checkout@v4
+        with:
+          repository: Sentongoharuna/Du-World-Situation-Room-
+          ref: 7d952dd607cdeec94832896023c10203425a3b7f
+          path: rb2-original-source
+          persist-credentials: false
+
+      - name: Set up original Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up original Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up original Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+
+      - name: Verify V109 source identity and required tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --no-cache-dir PyYAML==6.0.3
+          test "$(git hash-object .github/workflows/RUNNINGBALL2_V109.yml)" = "e6b8f657870b9ccec31a0fcd9e7c864a491c5e4c"
+          test -d rb2-original-source
+          java -version
+          gradle --version
+          python3 - <<'PY_CONTRACT'
+          import yaml,pathlib
+          src=pathlib.Path('.github/workflows/RUNNINGBALL2_V109.yml')
+          data=yaml.safe_load(src.read_text(encoding='utf8'))
+          steps=data['jobs']['build']['steps']
+          assert len(steps)==97,('V109 source step count changed',len(steps))
+          assert steps[6]['name'].startswith('Verify and unpack complete V24')
+          assert steps[7]['name'].startswith('Execute EVERY V24')
+          assert steps[12]['name'].startswith('Install V25 unique package')
+          assert steps[62]['name'].startswith('V108 INSTALL')
+          assert steps[67]['name'].startswith('Compile Android Java')
+          for i in range(6,67):
+              step=steps[i]
+              if 'uses' in step:
+                  assert i in (36,38,61,66),f'Unexpected source action at step {i+1}: {step}'
+                  assert step['uses']=='actions/upload-artifact@v4'
+              else:
+                  assert 'run' in step,('Empty required source step',i+1)
+          print('PASS: EXACT V109 source workflow pinned, full native V24→V108 source chain preserved')
+          PY_CONTRACT
+
+      - name: Execute original V109 Android source generation and every source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_REBUILD'
+          import pathlib,subprocess,yaml,os,sys
+          source=pathlib.Path('.github/workflows/RUNNINGBALL2_V109.yml')
+          steps=yaml.safe_load(source.read_text(encoding='utf-8'))['jobs']['build']['steps']
+          assert len(steps)==97
+          env=os.environ.copy()
+          root=pathlib.Path(env['GITHUB_WORKSPACE'])
+          marker=pathlib.Path(env['GITHUB_ENV'])
+          # V109 steps 7..67: preserve all real source installs and regression contracts.
+          # Four upload-artifact actions have no equivalent standalone shell command;
+          # source-probe commands are still executed and evidence remains on disk.
+          for index in range(6,67):
+              part=steps[index]
+              if 'uses' in part:
+                  assert index in (36,38,61,66) and part['uses']=='actions/upload-artifact@v4'
+                  print(f'PRESERVED EVIDENCE (upload deferred) step {index+1}: {part["name"]}',flush=True)
+                  continue
+              print(f'RUN PRESERVED V109 step {index+1}/67: {part["name"]}',flush=True)
+              script=part['run']
+              assert '${{' not in script, ('GitHub expression would not expand in wrapper',index+1)
+              proc=subprocess.run(['bash','-e','-o','pipefail','-c',script],cwd=root,env=env,check=False)
+              if proc.returncode:
+                  raise SystemExit(f'V110 STOP: V109 inherited step {index+1} FAILED: {part["name"]}; exit {proc.returncode}')
+              # The real GitHub runner sets GITHUB_ENV only after an Action step.
+              # Re-read each emitted value so the inherited steps behave identically.
+              if marker.exists():
+                  for line in marker.read_text().splitlines():
+                      if '=' not in line: continue
+                      key,value=line.split('=',1)
+                      if key and key.isidentifier():env[key]=value
+          project=pathlib.Path(env.get('PROJECT_DIR',''))
+          assert project.is_dir() and (project/'app/build.gradle.kts').is_file(),('Generated app missing',project)
+          with marker.open('a') as f:f.write('PROJECT_DIR='+str(project.resolve())+'\n')
+          print('PASS: full V109 source-generation through V108 preserved; no new placeholder app substituted',flush=True)
+          pathlib.Path('/tmp/V110_INHERITED_FEATURES.txt').write_text('\n'.join(
+              f'{index+1}: {steps[index]["name"]}' for index in range(6,67)
+          )+'\n',encoding='utf8')
+          PY_REBUILD
+
+      - name: V110 install supplied DEVELOP.UGANDA logo as native launcher image
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$PROJECT_DIR" <<'PY_V110_LOGO'
+          import base64, hashlib, pathlib, re, sys, zipfile, io
+          root=pathlib.Path(sys.argv[1]); assert root.is_dir()
+          b64='''
+          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
+          QMAKAAAAAElFTkSuQmCC
+          '''
+          logo=base64.b64decode(''.join(b64.split()),validate=True)
+          expected='e583513eda20b22ee9a9641c58a2b58869fd9997a94ae49c1321c378aa32d97b'
+          assert hashlib.sha256(logo).hexdigest()==expected,'Official logo data integrity failure'
+          assert logo[:8]==bytes.fromhex('89504e470d0a1a0a'),'Brand image must be PNG'
+          res=root/'app/src/main/res'
+          image_path=res/'drawable-nodpi'/'develop_uganda_logo.png'
+          image_path.parent.mkdir(parents=True,exist_ok=True)
+          image_path.write_bytes(logo)
+          # Asset remains reusable from ImageView and future source-credited share cards.
+          assets=root/'app/src/main/assets';assets.mkdir(parents=True,exist_ok=True)
+          (assets/'develop_uganda_logo.png').write_bytes(logo)
+          # Preserve all existing activities, providers and wallpaper services.
+          manifest=root/'app/src/main/AndroidManifest.xml'
+          source=manifest.read_text(encoding='utf-8')
+          match=re.search(r'<application\b[^>]*>',source,flags=re.S)
+          assert match,'Android manifest must have an application tag'
+          tag=match.group(0)
+          if re.search(r'android:icon\s*=\s*"[^"]*"',tag):
+              tag=re.sub(r'android:icon\s*=\s*"[^"]*"','android:icon="@drawable/develop_uganda_logo"',tag,count=1)
+          else:
+              tag=tag.replace('<application','<application android:icon="@drawable/develop_uganda_logo"',1)
+          if re.search(r'android:roundIcon\s*=\s*"[^"]*"',tag):
+              tag=re.sub(r'android:roundIcon\s*=\s*"[^"]*"','android:roundIcon="@drawable/develop_uganda_logo"',tag,count=1)
+          else:
+              tag=tag.replace('<application','<application android:roundIcon="@drawable/develop_uganda_logo"',1)
+          # App drawer title is bound to the upgraded app_name resource, not a stale literal.
+          if re.search(r'android:label\s*=\s*"[^"]*"',tag):
+              tag=re.sub(r'android:label\s*=\s*"[^"]*"','android:label="@string/app_name"',tag,count=1)
+          else:
+              tag=tag.replace('<application','<application android:label="@string/app_name"',1)
+          manifest.write_text(source[:match.start()]+tag+source[match.end():],encoding='utf-8')
+          # Keep the original installation package identity so V110 is an update.
+          gradle=root/'app/build.gradle.kts';text=gradle.read_text(encoding='utf-8')
+          assert text.count('applicationId = "com.sentongoharuna.worldsituationroom.rb2live25"')==1
+          assert text.count('versionCode = 110')==1
+          text=text.replace('versionCode = 110','versionCode = 111',1)
+          assert text.count('versionName = "RUNNINGBALL2-V109-XML-NAVIGATION-REPAIR"')==1
+          text=text.replace('versionName = "RUNNINGBALL2-V109-XML-NAVIGATION-REPAIR"','versionName = "RUNNINGBALL2-V110-DEVELOP-UGANDA-OFFICIAL-LOGO"',1)
+          gradle.write_text(text,encoding='utf-8')
+          strings=res/'values/strings.xml';a=strings.read_text(encoding='utf-8')
+          a,count=re.subn(r'(<string\s+name="app_name">).*?(</string>)',r'\g<1>DEVELOP.UGANDA V110\g<2>',a,count=1)
+          assert count==1,'app_name resource missing'
+          strings.write_text(a,encoding='utf-8')
+          assert image_path.read_bytes()==(assets/'develop_uganda_logo.png').read_bytes()
+          assert 'android:icon="@drawable/develop_uganda_logo"' in manifest.read_text()
+          assert 'android:roundIcon="@drawable/develop_uganda_logo"' in manifest.read_text()
+          print('PASS V110 official logo: launcher, round icon, reusable app image resource and new visible label')
+          print('PASS V110 original activity/wallpaper/source Java unchanged')
+          PY_V110_LOGO
+
+      - name: Compile original app and produce signed V110 debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+
+      - name: Verify actual APK assets, prior application identity, and embedded official logo
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' -t APKS < <(find "$PROJECT_DIR/app/build/outputs/apk/debug" -maxdepth 1 -type f -name '*.apk' -print0)
+          test "${#APKS[@]}" -eq 1
+          APK="${APKS[0]}"
+          test -s "$APK"
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "$APK" "$RUNNER_TEMP/release/RUNNINGBALL2-V110-DEVELOP-UGANDA-LOGO-APK.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK"
+          BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK")"
+          echo "$BADGING" | grep -F 'com.sentongoharuna.worldsituationroom.rb2live25'
+          echo "$BADGING" | grep -F "versionCode='111'"
+          echo "$BADGING" | grep -F 'DEVELOP.UGANDA V110'
+          python3 - "$APK" <<'PY_CHECK_APK'
+          import zipfile,sys
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              assert apk.testzip() is None
+              paths=apk.namelist()
+              assert 'classes.dex' in paths and 'AndroidManifest.xml' in paths
+              icons=[p for p in paths if p.endswith('/develop_uganda_logo.png')]
+              assert icons,('Official PNG absent from compiled APK',paths[-30:])
+              assert any(p.endswith('assets/develop_uganda_logo.png') for p in paths),'Reusable official logo missing'
+              import hashlib
+              embedded=apk.read('assets/develop_uganda_logo.png')
+              assert hashlib.sha256(embedded).hexdigest()=='e583513eda20b22ee9a9641c58a2b58869fd9997a94ae49c1321c378aa32d97b','Official icon was changed in packaging'
+              assert any(x.endswith('develop_uganda_logo.png') and x!='assets/develop_uganda_logo.png' for x in paths),'Drawable PNG missing'
+              print('PASS V110 APK: true classes.dex, preserved native app, exact original branded image')
+          PY_CHECK_APK
+          sha256sum "$RUNNER_TEMP/release/RUNNINGBALL2-V110-DEVELOP-UGANDA-LOGO-APK.apk"
+          echo 'V110 official logo embedded in original V109 native app. Prior V24-V109 source-generation retained; real provider availability not guaranteed.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload V110 APK regardless of later emulator result
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUNNINGBALL2-V110-DEVELOP-UGANDA-APK
+          path: ${{ runner.temp }}/release/RUNNINGBALL2-V110-DEVELOP-UGANDA-LOGO-APK.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Permit Android emulator hardware acceleration
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Android emulator - install V110 and prove native app starts
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 4
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            APK="$RUNNER_TEMP/release/RUNNINGBALL2-V110-DEVELOP-UGANDA-LOGO-APK.apk"
+            PKG='com.sentongoharuna.worldsituationroom.rb2live25'
+            adb install -r "$APK"
+            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 | tee /tmp/V110_LAUNCH_LOG.txt
+            sleep 9
+            adb shell pidof "$PKG" | grep -Eq '[0-9]+'
+            adb shell dumpsys activity activities > /tmp/V110_ACTIVITY.txt
+            adb exec-out screencap -p > /tmp/V110_LAUNCH.png
+            test -s /tmp/V110_LAUNCH.png
+            echo 'PASS V110: real emulator installed and launched the compiled APK'
+
+      - name: Upload V110 emulator proof and source-probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUNNINGBALL2-V110-BUILD-TEST-EVIDENCE
+          path: |
+            /tmp/V110_INHERITED_FEATURES.txt
+            /tmp/V110_LAUNCH_LOG.txt
+            /tmp/V110_ACTIVITY.txt
+            /tmp/V110_LAUNCH.png
+            ${{ runner.temp }}/evidence/
+          if-no-files-found: ignore
+          retention-days: 30
