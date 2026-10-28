@@ -1,0 +1,167 @@
+name: RUNNINGBALL2 V110 FIX3 - DEVELOP.UGANDA OFFICIAL ICON
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/RUNNINGBALL2_V110_FIX3_PRESERVE_ALL.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout DUWM exact inherited source workflow
+        uses: actions/checkout@v4
+      - name: Checkout original protected RUNNINGBALL2 source
+        uses: actions/checkout@v4
+        with:
+          repository: Sentongoharuna/Du-World-Situation-Room-
+          ref: 7d952dd607cdeec94832896023c10203425a3b7f
+          path: rb2-original-source
+          persist-credentials: false
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Install source reader
+        shell: bash
+        run: python3 -m pip install --no-cache-dir 'PyYAML==6.0.3'
+      - name: Rebuild full V109 native app, preserve V24 onward, install exact DEVELOP.UGANDA logo
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_V110_BUILD'
+          import os
+          import pathlib
+          import subprocess
+          import yaml
+          import hashlib
+
+          base = pathlib.Path('.github/workflows/RUNNINGBALL2_V109.yml')
+          branding = pathlib.Path('.github/workflows/V110_FIX2_DIRECT_PHONE_UPLOAD.yml')
+          assert base.is_file(), 'Required existing V109 source missing'
+          assert branding.is_file(), 'Existing V110 official-logo source missing'
+          assert base.stat().st_size < 500000, 'V109 source file changed or exceeds safe size'
+          base_steps = yaml.safe_load(base.read_text(encoding='utf-8'))['jobs']['build']['steps']
+          brand_steps = yaml.safe_load(branding.read_text(encoding='utf-8'))['jobs']['build']['steps']
+          assert len(base_steps) == 97, 'V109 source chain changed; refuse reduced app'
+          assert len(brand_steps) == 14, 'V110 source logo chain changed'
+          assert base_steps[6]['name'].startswith('Verify and unpack complete V24')
+          assert base_steps[7]['name'].startswith('Execute EVERY V24')
+          assert base_steps[62]['name'].startswith('V108 INSTALL')
+          assert brand_steps[7]['name'].startswith('V110 install supplied DEVELOP.UGANDA logo')
+          env = os.environ.copy()
+          workspace = pathlib.Path(env['GITHUB_WORKSPACE'])
+          marker = pathlib.Path(env['GITHUB_ENV'])
+          audit = []
+
+          def execute(script, label):
+              assert '${{' not in script, 'Unevaluated Actions expression in ' + label
+              result = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script],
+                                      cwd=workspace, env=env, check=False)
+              if result.returncode:
+                  raise SystemExit('FAILED inherited ' + label + ' exit=' + str(result.returncode))
+              if marker.exists():
+                  for line in marker.read_text(encoding='utf-8').splitlines():
+                      if '=' in line:
+                          key, value = line.split('=', 1)
+                          if key.isidentifier():
+                              env[key] = value
+
+          for index in range(6, 67):
+              step = base_steps[index]
+              label = 'V109 step ' + str(index + 1) + ': ' + step['name']
+              if 'uses' in step:
+                  assert index in (36, 38, 61, 66), label
+                  assert step['uses'] == 'actions/upload-artifact@v4', label
+                  audit.append('DEFERRED evidence upload: ' + label)
+              else:
+                  print('EXECUTING', label, flush=True)
+                  execute(step['run'], label)
+                  audit.append('EXECUTED: ' + label)
+
+          project = pathlib.Path(env.get('PROJECT_DIR', ''))
+          assert project.is_dir() and (project / 'app/build.gradle.kts').is_file(), 'Native V109 app not recovered'
+          print('EXECUTING official V110 logo installer', flush=True)
+          execute(brand_steps[7]['run'], 'V110 exact branded image install')
+          logo = project / 'app/src/main/assets/develop_uganda_logo.png'
+          assert logo.is_file(), 'DEVELOP.UGANDA logo asset missing from app source'
+          assert hashlib.sha256(logo.read_bytes()).hexdigest() == 'e583513eda20b22ee9a9641c58a2b58869fd9997a94ae49c1321c378aa32d97b', 'Logo changed'
+          audit.append('EXECUTED V110 exact official image and launcher resource')
+          pathlib.Path('/tmp/V110_FIX3_AUDIT.txt').write_text('\n'.join(audit) + '\n')
+          with marker.open('a', encoding='utf-8') as out:
+              out.write('PROJECT_DIR=' + str(project.resolve()) + '\n')
+          print('PASS: all V109 original source-generation steps and exact V110 branding installed', flush=True)
+          PY_V110_BUILD
+      - name: Compile the complete preserved native Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+      - name: Verify real APK package, DEX and branded image
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_V110_APK'
+          import os
+          import pathlib
+          import hashlib
+          import zipfile
+          import subprocess
+          project = pathlib.Path(os.environ['PROJECT_DIR'])
+          apks = list((project / 'app/build/outputs/apk/debug').glob('*.apk'))
+          assert len(apks) == 1, 'Expected precisely one compiled APK'
+          apk = apks[0]
+          assert apk.stat().st_size > 20000, 'APK empty or unexpectedly small'
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None, 'Broken APK zip'
+              names = z.namelist()
+              assert 'classes.dex' in names, 'Compiled Java missing'
+              assert 'AndroidManifest.xml' in names, 'Android manifest missing'
+              assert 'assets/develop_uganda_logo.png' in names, 'Official logo missing from APK'
+              assert any(n.endswith('/develop_uganda_logo.png') for n in names), 'Launcher drawable missing'
+              digest = hashlib.sha256(z.read('assets/develop_uganda_logo.png')).hexdigest()
+              assert digest == 'e583513eda20b22ee9a9641c58a2b58869fd9997a94ae49c1321c378aa32d97b', 'Wrong official logo'
+          sdk = pathlib.Path(os.environ.get('ANDROID_HOME') or os.environ['ANDROID_SDK_ROOT'])
+          bt = sdk / 'build-tools/36.0.0'
+          subprocess.run([str(bt / 'apksigner'), 'verify', str(apk)], check=True)
+          badge = subprocess.check_output([str(bt / 'aapt'), 'dump', 'badging', str(apk)], text=True)
+          assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in badge, 'Original installation identity lost'
+          assert "versionCode='111'" in badge, 'V110 versionCode missing'
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'release'
+          target.mkdir(parents=True, exist_ok=True)
+          output = target / 'RUNNINGBALL2-V110-FIX3-DEVELOP-UGANDA.apk'
+          output.write_bytes(apk.read_bytes())
+          print('PASS actual signed debug APK', output, output.stat().st_size, flush=True)
+          PY_V110_APK
+      - name: Upload real compiled V110 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUNNINGBALL2-V110-FIX3-APK
+          path: ${{ runner.temp }}/release/RUNNINGBALL2-V110-FIX3-DEVELOP-UGANDA.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload inherited-feature audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUNNINGBALL2-V110-FIX3-AUDIT
+          path: /tmp/V110_FIX3_AUDIT.txt
+          if-no-files-found: ignore
