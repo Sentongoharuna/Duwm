@@ -1,0 +1,1093 @@
+name: RUNNINGBALL2 V1159.1 - TWO BASE RULES ORIGINAL GLOBE UPGRADE
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+    - name: Checkout DUWM exact inherited source workflow
+      uses: actions/checkout@v4
+    - name: Checkout original protected RUNNINGBALL2 source
+      uses: actions/checkout@v4
+      with:
+        repository: Sentongoharuna/Du-World-Situation-Room-
+        ref: 7d952dd607cdeec94832896023c10203425a3b7f
+        path: rb2-original-source
+        persist-credentials: false
+    - name: Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Gradle 8.13
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: '8.13'
+        cache-disabled: true
+    - name: Install source reader
+      shell: bash
+      run: python3 -m pip install --no-cache-dir 'PyYAML==6.0.3'
+    - name: Rebuild full V109 native app, preserve V24 onward, install exact DEVELOP.UGANDA logo
+      shell: bash
+      run: "set -euo pipefail\npython3 - <<'PY_V110_BUILD'\nimport os\nimport pathlib\nimport subprocess\nimport yaml\nimport\
+        \ hashlib\nimport tempfile\n\nbase = pathlib.Path('.github/workflows/RUNNINGBALL2_V109.yml')\nbranding = pathlib.Path('.github/workflows/V110_FIX2_DIRECT_PHONE_UPLOAD.yml')\n\
+        assert base.is_file(), 'Required existing V109 source missing'\nassert branding.is_file(), 'Existing V1152 official-logo\
+        \ source missing'\nassert base.stat().st_size < 500000, 'V109 source file changed or exceeds safe size'\nbase_steps\
+        \ = yaml.safe_load(base.read_text(encoding='utf-8'))['jobs']['build']['steps']\nbrand_steps = yaml.safe_load(branding.read_text(encoding='utf-8'))['jobs']['build']['steps']\n\
+        assert len(base_steps) == 97, 'V109 source chain changed; refuse reduced app'\nassert len(brand_steps) == 14, 'V110\
+        \ source logo chain changed'\nassert base_steps[6]['name'].startswith('Verify and unpack complete V24')\nassert base_steps[7]['name'].startswith('Execute\
+        \ EVERY V24')\nassert base_steps[62]['name'].startswith('V108 INSTALL')\nassert brand_steps[7]['name'].startswith('V110\
+        \ install supplied DEVELOP.UGANDA logo')\nenv = os.environ.copy()\nworkspace = pathlib.Path(env['GITHUB_WORKSPACE'])\n\
+        marker = pathlib.Path(env['GITHUB_ENV'])\naudit = []\n\ndef execute(script, label):\n    assert (chr(36) + chr(123)\
+        \ + chr(123)) not in script, 'Unevaluated Actions expression in ' + label\n    # Linux limits a single argv string\
+        \ to 128 KiB; the V109 V24-restore step is ~179 KiB.\n    # Preserve exact source bytes but run Bash against a temporary\
+        \ script FILE, never bash -c SCRIPT.\n    descriptor, script_path = tempfile.mkstemp(prefix='v1152-inherited-', suffix='.sh')\n\
+        \    path = pathlib.Path(script_path)\n    try:\n        with os.fdopen(descriptor, 'w', encoding='utf-8') as fh:\n\
+        \            fh.write(script)\n        result = subprocess.run(['bash', '-e', '-o', 'pipefail', str(path)],\n    \
+        \                            cwd=workspace, env=env, check=False)\n    finally:\n        path.unlink(missing_ok=True)\n\
+        \    if result.returncode:\n        raise SystemExit('FAILED inherited ' + label + ' exit=' + str(result.returncode))\n\
+        \    if marker.exists():\n        for line in marker.read_text(encoding='utf-8').splitlines():\n            if '='\
+        \ in line:\n                key, value = line.split('=', 1)\n                if key.isidentifier():\n            \
+        \        env[key] = value\n\nfor index in range(6, 67):\n    step = base_steps[index]\n    label = 'V109 step ' +\
+        \ str(index + 1) + ': ' + step['name']\n    if 'uses' in step:\n        assert index in (36, 38, 61, 66), label\n\
+        \        assert step['uses'] == 'actions/upload-artifact@v4', label\n        audit.append('DEFERRED evidence upload:\
+        \ ' + label)\n    else:\n        print('EXECUTING', label, flush=True)\n        original = step['run']\n        if\
+        \ index == 7:\n            # The V24 dispatcher inherited from V109 also invokes Bash using -c\n            # for\
+        \ potentially large source-generating step strings. Patch only\n            # its invocation mechanism; DO NOT change\
+        \ the embedded source steps.\n            # Replace the TWO original V24 dispatcher lines atomically.\n          \
+        \  # All injected lines retain the same Python block indentation.\n            # Neither nested V24 source scripts\
+        \ nor upstream code are edited.\n            anchor = (\"  cmd=['bash','-eo','pipefail','-c',item['run']]\\n\"\n \
+        \                     \"  child=subprocess.run(cmd,cwd=str(cwd),env=env,check=False)\")\n            assert original.count(anchor)\
+        \ == 1, 'V109 V24 dispatcher anchor unexpectedly changed'\n            replacement = (\n                \"  script_file=pathlib.Path('/tmp/v1152-v24-step-%02d.sh'%index)\\\
+        n\"\n                \"  script_file.write_text(item['run'],encoding='utf-8')\\n\"\n                \"  try:\\n\"\n\
+        \                \"    child=subprocess.run(['bash','-eo','pipefail',str(script_file)],cwd=str(cwd),env=env,check=False)\\\
+        n\"\n                \"  finally:\\n\"\n                \"    script_file.unlink(missing_ok=True)\"\n            )\n\
+        \            original = original.replace(anchor, replacement, 1)\n            # Parse the ACTUAL inherited dispatcher\
+        \ before executing it.\n            # This detects the FIX1 IndentationError without another failed GitHub build.\n\
+        \            delimiter = \"python3 - <<'RB25_V24_RUN'\\n\"\n            assert original.count(delimiter) == 1, 'V24\
+        \ Python heredoc not found'\n            body = original.split(delimiter, 1)[1].split('\\nRB25_V24_RUN', 1)[0]\n \
+        \           import ast\n            ast.parse(body, filename='V1152_FIX2_V24_DISPATCHER.py')\n            assert \"\
+        \  cmd=['bash','-eo','pipefail','-c',item['run']]\" not in original\n            assert original.count(\"child=subprocess.run(['bash','-eo','pipefail',str(script_file)]\"\
+        ) == 1\n            print('PASS FIX2 V24 Python AST, preserved source and Bash-file execution',flush=True)\n     \
+        \   execute(original, label)\n        audit.append('EXECUTED: ' + label)\n\nproject = pathlib.Path(env.get('PROJECT_DIR',\
+        \ ''))\nassert project.is_dir() and (project / 'app/build.gradle.kts').is_file(), 'Native V109 app not recovered'\n\
+        print('EXECUTING official V110 logo installer', flush=True)\nexecute(brand_steps[7]['run'], 'original V110 branded\
+        \ image installed into V1152')\n# V1152 is the version to install; preserve the original Android appId so updates\
+        \ are possible.\ngradle = project / 'app/build.gradle.kts'\ndefinition = gradle.read_text(encoding='utf-8')\nif definition.count('versionCode\
+        \ = 111') != 1:\n    raise SystemExit('V1152 requires completed original V110 branding/version chain')\ndefinition\
+        \ = definition.replace('versionCode = 111','versionCode = 1152',1)\nold_name = 'versionName = \"RUNNINGBALL2-V110-DEVELOP-UGANDA-OFFICIAL-LOGO\"\
+        '\nif definition.count(old_name) != 1:\n    raise SystemExit('V1152 inherited branding version missing')\ndefinition\
+        \ = definition.replace(old_name,'versionName = \"RUNNINGBALL2-V1152-DEVELOP-UGANDA\"',1)\nassert definition.count('applicationId\
+        \ = \"com.sentongoharuna.worldsituationroom.rb2live25\"') == 1\ngradle.write_text(definition, encoding='utf-8')\n\
+        app_strings = project / 'app/src/main/res/values/strings.xml'\nst = app_strings.read_text(encoding='utf-8')\nif st.count('DEVELOP.UGANDA\
+        \ V110') != 1:\n    raise SystemExit('V1152 app label anchor missing')\napp_strings.write_text(st.replace('DEVELOP.UGANDA\
+        \ V110','DEVELOP.UGANDA V1152',1),encoding='utf-8')\naudit.append('V1152 versionCode 1152, versionName V1152, app\
+        \ label V1152, preserved package identity')\nlogo = project / 'app/src/main/assets/develop_uganda_logo.png' \nassert\
+        \ logo.is_file(), 'DEVELOP.UGANDA logo asset missing from app source'\nassert hashlib.sha256(logo.read_bytes()).hexdigest()\
+        \ == 'e583513eda20b22ee9a9641c58a2b58869fd9997a94ae49c1321c378aa32d97b', 'Logo changed'\naudit.append('EXECUTED official\
+        \ image and launcher resource')\npathlib.Path('/tmp/V1152_INHERITED_AUDIT.txt').write_text('\\n'.join(audit) + '\\\
+        n')\nwith marker.open('a', encoding='utf-8') as out:\n    out.write('PROJECT_DIR=' + str(project.resolve()) + '\\\
+        n')\nprint('PASS: V24-V109 source generation preserved; official logo installed and V1152 label/version set', flush=True)\n\
+        print('V1152 source reference: pinned V24 original + unchanged V109 pipeline, with V110 logo branding',flush=True)\n\
+        PY_V110_BUILD\n"
+    - name: V1153 Install NEW foreground live globe, observed signals and functioning source health
+      shell: bash
+      run: "set -euo pipefail\nmkdir -p \"$RUNNER_TEMP/v1153-source\"\npython3 - \"$RUNNER_TEMP/v1153-source\" <<'V1153_UNPACK'\n\
+        from pathlib import Path\nimport base64,gzip,hashlib,sys\nroot=Path(sys.argv[1]);root.mkdir(parents=True,exist_ok=True)\n\
+        payloads={\n  'LiveCommandActivity.java': ('033deb8210a5bb07d5884f09ec29db931bd82911a6622fcd01a661cab7ba0f2b',\n \
+        \   '''\n    H4sIAAAAAAAC/61a3XLbOLK+z1MgqtoUGdO05J84tqLkyLL8sytLXknO1JyplAsWIYljimQIUo7WSdV5g3O59/to+ySnGwBJkKJizc6x\n\
+        \    qyQR3Wg0utEfGg2GdPJIZ4xMgoXNmR8H/iyY0yjxqf0URJ7D3TihsRv4URAsmq9euYswiGJCfScKXMemYWi3J7G7dONVs0wMuH2W+I7H\n  \
+        \  qihXFClRFakXBGE1ZbTiMVt0vGDyuEaeBH4ME7CvxddGcge/v63TZxEN5+6EA4MXRJvJ41XIpnTCNnM4EX2iDx6zLyPquDDmuWpY67J0\n    2RNyVVpPED/Dx2bKZRQk4Rr5yXVmLAbTx+DNTdTrBXi9Urpi6Lk+o1GProIk3sQzmkSB5/1MyhhMXaAH0cz+nQe+/dfRoN+OIrqqJg0e\n\
+        \    fmeTfODf6ZLabgCTmk5ZxJwho462RFLytR8m8SiOGF38jFbV2wdtr+I4vBv2YIn4MLirWS9jAXKxEReTPYIWj53TmF0E0YKW9E5i17PF\n  \
+        \  XHsur6Jhx4rmDdy9YEK9Kv6xu2D/HfhVJFj9kySKMAC639gkiYNoxKKlO9mSmf+cjcbBwp3YbfF1FgQeo2C7V3tv35LPjcbRwSnx3CXb\n    nboRj4kPeLJkhE8ixnzy5MZzAk7xLMKDJJqwXRrHkfuQxMwhC0Z5ErEFjMFxaZFFgG6xydu9V2Hy4LkTMnV96pGJRzknPZDbCRYL4ExB\n\
+        \    iYB7mO9wkjU8vyLwF0buEqxOeAzapFJcPyZnl6RFBAbY0ezBOLIah9b+e9Mit+1+t9fKKY19a//EOjwxmy8I7N11tW7Hx9b+Pog8PAKZ\n  \
+        \  v1xdj3Xi/gEIPUTqMVAvh91f9QGP3luN9/tW4+T4Z2N6AOHkojvuXN3fjGAujfd1+OsVe0hWhcEkcVs+e0ofDYm/NsTvDXV9+WSYZpWE\n    0mIisGc8sqiVLRuImaeR6888Np6Dk52UYFRKK6wfWBRfE8Zj6C20KxCNKfU4qxSCUfMBV0KXRvH80gseBM7ZtwHsZbB4PhLqRrcBuIZL\n\
+        \    uWlgfvho/IcCvyb0kW0ncl0OmeGvIlcKm7CuYauDyEhgUUcrC1X/TL2EiV8jcHvCLTm8aha/U4JPOVXt+FM2bxgJ5I2DGThKyZAPRWax\n  \
+        \  tCDS4qF0DXPacWs3XWsbeEfJZMI4nyYeMNeLTBgfEZswMIozEtHPyywPajU4Lg89umq70SSi07gVRzgt1fp31JiLtureEQMTMqcllk2V\n    k4eJ7+MeTSCQHoUT0xbDfP6vwZJFkeswokBnCVscgSQJaEIW/rlT47UaxoxYnER+M6MJN0J+FaO5jdrduENqZAfGWjD4bci0xlZoijB+\n\
+        \    43qeyyHogKtGyL//51+E3AzG14M+aXfG15+7NbNZGjkNFoxbwyRv3hBDS5ds5tGQi43Tw2ENc7fkSPKxlcEGjBuxKcxmbmjjJK4dBjw+\n  \
+        \  B1Er5hjx3OVWA7BFsfz4se5cJzSmXkBjsjSfpVGIAe2msXwLag6ZhHyYKGp9Lp15wwD/J9jmMB9CbLVTt4+mZvNHQTrs5DDZzIRiuS24\n    5o/ynkymi1g4tkwwaiv427252XUccnV1uliccl6z5DZr3400C4AI4UW10RrpD9Q+a0T31gAu1Xyxz1QOhKPjuAYomhqtMKlyxkhC6jMP\n\
+        \    LQYYHwWPzCT5BNeYHTG9cjN40EGlxUZiiF0sa4l8Fg2BPeEGeKqxb2pzFSwjMaogmpZSIZ2YUzWDDE8wLzKUk5YCg8QsQvE1QV2sNDgf\n  \
+        \  As/RHJeJWIr5pI9ivZnNZRZGQqrWICcoRGutI/cfzOBhMVzEiJJFpfNG+sM+716073pjK2s4G/TOte5q9suq2QtcoI5j6NkzOBHD2pJz\n    EvOfm8+q1QZuMbulhZPV+9ny65ZGdMGN3YY1/1D/ND8FX8xNcFTV0CF1DDkMfMiRxCdEnzg0wIRvYUDwiSHEWPC5FJ/p73KYZc5YAMJ2\n\
+        \    aFSa2hzwwMpCMYbdQz149IF5Vtr7ty/g5G+aj0v2gUXeKk9f+VsQUfFBhKtanEULOtifu8Pxdafd03yUdTqD4+0MTkm+Y8hQ0nKtY+v4\n  \
+        \  HeDXPhoTDScYMN2DOGhWalrwCAnD1osu2wVRcESOg/CGRjPXb4GRIWNEs2Wel+OG+hLNrD6HnAkTIBFN0sCQd2JKaeFmZzZxsUkBilUM\n    uS7owVVCpGP2jyyReyopmyf5sOUkH0qTPEw9l84SFLAeKufIRVoitau1n6gbC8xgkTt14QwgtwjcwcPA56yGBsDM2FIp4Gbd+Za685Lu\n\
+        \    B2XdpYZWAUVgPf9W/9KCaTXxZ+NLS3Kl6IgEDSGqU4jA70BWDBuCrJMIUzDzmSeYf2dE2dpEtJrDWchIz9hDm8cr2KJE6/0NMEUu9e77\n  \
+        \  QVscXs9opOkLO9Qvru8ET7CvCmBHZYFFoubZpdkscfTp0p1RJSjnqg7hKAjiTRGMtC0DOGXNw7ZiYLFziWKOcA722aTWQwS22qSXIOJo\n    qgJjqG+70+2Pu8P7XC1EB8GNa+9EBh0Oa8nG47o2flZYgQx4FoixsyY1MBJwXNGe5kDGMC8cOWzJvCC8T2Ygnt4jf6puuiSx7YUdA1by\n\
+        \    0ZGAdfgyN5lIwQbfZKWUvqUHdXZtqwFIter4r0dQYUJpxxcmVYeItRr6bNAZWWcJIr8Mhr1zMroe37VFyjwcDG4AN97rmFfEyQoh593P\n  \
+        \  3d7g1r67bPfP2yoHF9UM0oMEnHT7l9f9LohtaHhclCrSfgVsmPOT3V0lZzRug8X6lyqpF1IEqEk8xgUnj36wHR1rC042HuiDiOOj8l75\n    bKlHYGpowf9ysgFO23//k3UTi/PhMHjavHHDESFlwvm90+aREw4LbkgPocpo//7n/5L29bAzbF+MwUYH+s6nnVI17i7Y9ervd+2/dUei\n\
+        \    g7bfHx1ZjZOG9f7YVBKyYTNtMiPlp+Etl+O6CE2/P76m0+FF1Pkd2DAesZ7AIF83lrsfn8un4delhqbwss3nwVPaZJRYwBv6KG0vnNMy\n  \
+        \  z6fG9LRuH4jTl6aeNrUXFFQH89eFR0052WAUyAXXrqkmeTYolheksbwIP+WBL2tVS1PSUPSFKwlY2kxrSoVokawvh0u96MBCqEwZ27gJ\n    IW1LaMWAQna1CalJpIoiRd8kZcVIRYYArNHgbtjpkqtuuze+IuQ77FU+5FrUczkmXFfj8e0ITmZp7ZvXKlJNMX5ajarMNCHVp4Vz22/7\n\
+        \    X5rZ4UH0rw1uu/3R334VUDg4G3WHn7vnWpyTWmfQ73c7CJA1i4qFKspYLQopVzOrfMFj40ulBl9f0uBudDkSw9+0L/uwT5x3yaF9tEP2\n  \
+        \  SK89GpP9Q3IF1hqVdfmq1qbU5itqoxXcoGGDPv5L+vTbo7bQ53zUGXweku7tdUdiGbkGFbvDX8uq+GYzK++1fNQkL/HBc5UixA/iFCtH\n    aVYt9zwCh1HiQ9oREe4uEg9ySccmfRZjQZcEEYGEdOFyDuuCTKnrJZCOiz4YxD5h30JAADierGxyyQByJyiAOEHMIcf1VoSGISxpApAC\n\
+        \    I2C1P8vnuU16lMckCR3ow0nCGYG90l7L87c4kflbJvx+KeFvHKpATIMJDWX5erovb9PSqpgYRjalW6wk5DW+Yfdi2B1d5ev7vD1u19YY\n  \
+        \  VX4LUVYgtT2vQ0NubD/3aIu5YyqINZ6oPP96af5KEysKC4WPTL0KxM/qhetGCyJ3hkXWdaullNxsCA1kMLyG3KrdI53BzQ1kXwQz8iHW\n    PPUOJRuVZUnLioxvKwMGWxrwEGYYlAz4rmS/VBcr0A2oa1i1Z8qba1CESbyQz7LOijcx6RWWLW67UAvm45AXHp1xQ3LbF7325b2oEV+P\n\
+        \    f73v9ABE7seDW9gvYkgNUxEG9s33zrUzagQBMMEQVsfUoShsG/nRNG1oppV1UXuXG7tsuhFXdcChysYGVtbT8tJPhrqlAAEGlov1kr2U\n  \
+        \  HCJNFxyxRbAEIPW8BzgycjVGqqQS9fKY5wxrmysYVV5gQW6SxHAS9vt4Gs7kZWwgsaoYjWj6Vw66qeck8kwSz6PgiZPutwkLUXGtgrt2\n    36xtvy1jjWriooAWA+Xa6MGcptfpcyGyyiuesDyNacfxERbsiyx4H57ST/KC/rosdV1wG+GVIKyiWnuCs6pZNQB4WM8if9nDS/za9jLu\n\
+        \    OIt22zNYvCDnXB5978TJ9xd8A2WUvoEyDILFHp6/dNlxtMrtKaq7orzssJY2qrxqENtNB0i6rVRBGHu8bu3D1IW7CFo6e3FgkPnOqGGW\n  \
+        \  RGo7yF+Sor1fAEqUhteIMHrxLQaxbFik0FGnGBIFSu8tGK4PCcz4Yvd9zSzpINfdWeJ6KPchcFYyAdabYfy0Ruv6rNj/ae56zDCQ0JJa\n    2fiFmAjA/rrlJ55nPqNcfPOH+Y5gNZuipA6NHvNnMewBHw/q4u8la6ZegQRiAvjJycHNGaid+E4tjdp89xHqwAGYS9iRVTYcNQ7khHS/\n\
+        \    /hDXet7qWfMDnCDUU4YJP6ru0dN7iSWkxo7hBAlerkBKZKU/IRTT26zX56LNdnmf9g1gMt+8yduufVDDjdkaQTCDmGpmQYAuH1u7J3Xx\n  \
+        \  60NL/Ah8aGq8lz8/tOBXs+IWINuKnzddEU6CBV4/tH1nxNS5Ryb5azeX5dven14prh0/8n19/fCBNTw6EbVe13cYribc/QCbl4DREbdt\n    Ww90BcxMvEAAa9SEDbOwQF6+podlCAfb9Rt6PN2pg+qG2/tifBG6bNXu+u3P7ete+6zXhXNBucEvNVSL4a0a9BWfPn42EbyCx/QKfCPG\n\
+        \    4V/+khQJ6coLqDxi5s1GthvV5rCT8NO9Pdwy+ONq15d5vR1Esz0aunuiwMz3IF7WECUdShhF1qd5Sw0IW1Cc0YyaJNYqBMDqUz0lgryA\n  \
+        \  Cv1ADQQnDJBcKVGgfOLHLcmZIY8lgrYjSPXqfvzRDVs3NJ7bC/rNaFhCzt5JYdvLLnyDSNy+uiDM/SA4m+7Ojrnuj6KhYCXD4VvpVjCT\n    K9BS0oU1vn8XDwgK8GQcmaWGd6aJ7y66fsKalaPmqNSSHWE8CSrGkaXQBfDGtABH1jje6RzV8kFdiYQIgYhN5nNu5J0dnI77F2HUVt2U\n\
+        \    MYZZqVFdksziMRdXQvocl/U/iDkZNullenY/b9X+YiHoYQ0HUjqqalc16diKSYl3BVKc0RdzDwhGDbGsZlWtBgxYWSaBTEFVckM1HS7e\n  \
+        \  6MgNo724ETxAhrME1ZDDSAf+WP+UvryQNr3Ftyl65qlQAU/rgKOYVzHYDoU8fLNgXa3gEbxQaP0BmdhkbuQ5J/tmPqP2A0CA0ePqVKjC\n    6ZR1owiWOJBLTvh/wxyG3hdFEjvhM27PgqXWxvfw3LS3bNj1PbVn7B3aR/cOXUHaFMhM8qeQNGU0xmpE5kfItjRQSsk/B5GUK4ORrZDg\n\
+        \    zRv3A2TTLwCCMhjMZsEw6LOxFCwoy7mmhINP+HG6kanUUEvF1jYHbzayBN8MTHIbToIgcngrZSzhuqBCNiXBXSTLgl2hl3zKLPdhf3u4\n  \
+        \  Ul1zNKqv4dUaS+M/Aaxsg/+DwLQFLsHWLxbDTi2HIG19V4Tr1woUwXDMleT4zoqM+FleTZOckzmbPCos2fb9sT8FG6gulkv/BGbIVQab\n    eQYXcmlVoEXoTuwZn05srGYKsMAExcdooNXZCaRaIDlbf+AHrF5yiFS8XsXXC3EFVcxfZWFPc+YXJAAw42Mx0Ooi8tQ5o4alSjisFhH6\n\
+        \    FJ7VoHEAAFYxJGZ5otRb9r9SGS2M+vx5r6Ujvew1+f5jWsGAbZYurQj2CsqtCBb3V3iCJfAVnsDSPjyBaJ83K2SI5Eq+7Ql4HDwWedIy\n  \
+        \  0HrmrmLW5Rdw/uFzcZL7/t3lqtzCHGP9XKLdlIkSeHbSgBmY+RWB1swr1k5ezM8Zvy5NvaivEaokZDX4nM9fmlotXmuv6p+9iwwnW4AN\n    Q+iuWgCr2pAAypRKKVVi1tty9vQebW00dfHG4oFISURZhRvZiJYmrqJ3+U3dzNfVGX9K/Vg3194D3vIY+QeOk7jMSwru1PYO8vMkVhAA\n\
+        \    PB0NcbfCTxmIlebIztOcxWulehGaekWi8o1PVXJQ4ZfHqRbN+jutkm3REm+c3oA5AW0MsSkv1PauaB0sEcvXauX7rn1aNK2qXyxy2Dup\n  \
+        \  f1rYPHngEuTq1kndPF2kSv949X9GZnKvKzYAAA==\n    '''),\n  'LiveEarthGlobeView.java': ('d808f32fa1a37ff1ed01b225bb59f65051b394d0948e3976d4f13931a9a2b295',\n\
+        \    '''\n    H4sIAAAAAAAC/51YbW/bNhD+nl/BDRgg2YwqOXHj1FE3L3G6YG6TOUaLoigKRqJtLrKokbQdL8h/35GUZFm2k3b5IInkvZB3zz08JyPR\n\
+        \    PZlQFPGZJ2mqeDrhUyLmKfGWXCSxZGpOFOOp4HzWPThgs4wLhUgaC85iL+KpAi3vXL8fVLe+PhEkm7JIeuckXRD5zDpPuNi/PGApJeKd\n  \
+        \  IDEDd/vlbgh7fllN968OaaQu9y/fTklMt/fIYWUlFZ2dJzy631peMLr0PsKjXPmbLIg3VyzxekKQ1YBJtWPNTh+8ajRQD01oOocIJCs0\n    4wuWThBsSrFonlAPXXAlEREUSSVYpEBmTFU0pTFoQVAjouCT30kqFiaR0kONVwfZ/C5hERqzlCQoSoiUaMAWtE+Emr5L+B3VW0aQUprG\n\
+        \    EpnB4wGCv1xRKr2BDf0bDmABB7lgRdhKxRxGFCUEzvWsAE+3BArbztoIADOmuKI0MTMuetSrYSHR1UthudxFT8a2fWaCQVBo7t+AB2Uo\n  \
+        \  RCkc14wc8/R6H0ZX33qDq97tt8tB753b3aGtE3ZW7PMtIkxEgoxVbq1M9dlb53vU/5mTeypfVr7jPKEkRXLKl721SyXmdL/gX4Xx/WIk\n    UgAHEBmTRNZkdDAhxlJdCjLTMv5gUyDPyYos9aLn186bcKJQ9IBRtMJIl/QciKEKrm0kOjnBoMi+dZblPKPCKSa6SFI1ICsqRquMOlrJ\n\
+        \    G/Q+94ffRp9v+t9ury9Hn3rDPkbpPEncAga5wwVUqta/rpSJsyehVobGuJ4yqnds8laIuJVSKNS9COIrII3rGRLHvSRx6g7cdRVYNKxV\n  \
+        \  83GuuMPxWpUB7yYshsAX0Nlx8gp4nCpQTJgri6EedDdt7rFnMbbTml36TluCyvmMvuem+rUFi8zQQHeNwrDCwd48Uwx0WJIwqa2+5CMj\n    c7nDhYV+Lv/b9YIKwWIKOOYKbgpgVaPM0wuqiCbcS8Fnn1ga8+UOKwat3m5h7WO7RL58RTISlFZJr8p3VXTls3BRQcW9h1vOU3wIlUUA\n\
+        \    x6DmYlCe3cVkxyoYOoRK7dZtxTRT00I+4tIB426jHFl7VaCNkWN1zqDoXUicmovUlNtaqJgEUivO+AhU0HTMyHUsGzR2+JQsLXy6mjkO\n  \
+        \  d6loIa3ioqfuDpo3+ZpAEnU74diWBEW4JL0ZhTWICkb6Iog4FzFws6LVSOsWAgBjQmOvCTXVGSxssFQCSMIKbeq/MRfI0UYBpFnod837\n    LAw6+WezWfVRyYK+yopt/Xp46je19Jv11ro7leDGK5XWsm8OwV+z5fkNbWRTs8jGIswxp8GmsbEpxsbOIgwNhT5unFTTMEuhJJ/q8j9Z\n\
+        \    OfdRB82D/oWOuLP44n/Fiy/BV7ebmzH1/ETBlomul0CKNgVLw2sXkRcLsjQp0Eo4c/emPUu4Wqe8Rt0Zh9xIbLMOjSi2d5Rk/27kPoMW\n  \
+        \  WZlO1TFibtfM3KpVQvNOwXx7l1eDQbFoukbH3joVVgZPRCOhChGnbKEe3tgtuY/1cIJWs/k2DALfd+8EJfcv5PHB05mE585c/pTn0gby\n    HGgeTlLGHOsA6KA+1WL/MiWCtTLa1RCWNKgFog36cCxh1o5smo2UL58j+G2FmCaKhIYTZsAJHX+A7YA8OD4Gc4flzeHW9IELQwceTWOj\n\
+        \    Ae2L7wcn7i+OMXBz1YACqrssbyGwvAuntsWzoFqGE6o+sVjTBp7qwR+UTaaqeo7oIVyC57Y/7karcJp/WqYLy4ME/hiXR9Tyx8ftMdbS\n  \
+        \  x6/b4+q5fhCmFZybpycmd85rHJzgo+Oq2Rw1NcE2Do5xq7Plvy4H5to+PmmD4Ab8oDOExtAethm0yqJeHyTfK7Dv5u9CUD20emCh/Hpo\n    lnPF10b2Kjs6wq+P8Wnbxeu5Fg46+OjUxdarN2IJtAox9c4Hvfc3O6KxfQh9gme4YE9ybkfD6z/7JcUIfk8tagIvgOxuJ4nYI7zGJyeQ\n\
+        \    qlMcnG7kQPOLph24GEJ9EXTh4yx/N8OW75YXY4Q1GWOYfy6F1p3f1iEL2nvd6Qvs8KTdhfdZaN/NMGhXvZkbBOs25f8H5Wi8D7YnuKXx\n  \
+        \  2Gr9YK72VEuVsKqtsWsumAgXXXwFQh0f3Ldxqw3Aank6d3UjtiMuTNjuvorBNtTUaYA7Jy4+9jrjepxG8APoFqjaCVrjBhDKkEo+FxG0\n    364Hwwsms4Ss3lP9DwI9JyOS0PiCws2rVi+WaacD24cIHh1tR1B7dn4eXo96o6sP71C/Nxz9gV6hj/3h1eVV/wJd/37bH36ExesPt+j6\n\
+        \    w+Dzzxj2iKeHwfF4o7DX9J9xqa7Khv2Cws5p7IDz4mp/OvgPlterOLUSAAA=\n    '''),\n  'install_v1153.py': ('8e4fbf67254995f3201693891a300ae3e595431fbc4672b7d3b433dd12150d7b',\n\
+        \    '''\n    H4sIAAAAAAAC/61Y72/bNhD9rr+CyzBQwmQ5SdFhyKBhXmK0GRK3SN10Q1EYtETbXGVJIKkkbtH/fe+oH1YcN0ux5UNsU7w73uO7x6O+\n\
+        \    /25YGT2cq3wo8xtWbuyqyJ95BwcHo7LMNkzkTKSpsupGhuxGarVQMmWjPNWFSllSpJIlK5EvJbMFsyvJTJUk0phFlbHro6Pnx8wUlU7w\n  \
+        \  WEsZwa2n1mWhLSuFXWVq3v7Usv1mNqb9erfOIukMx5lcy9xO8Z0Jw8bTdspKGOfG00Vh48Zp9BqfPhxFQi9v3h99CCItTZHdSD/whDGS\n    AmJ+pMwsVdoPQsYngnLsMuutmuWFZYuiylPu/S1uREymQy7Kcmh0MlwLYEfjw6RYDw1WWeTLYiV0lYvhbaGz1ChbwXuRw3DN2wX4zoZf\n\
+        \    wnyUILaym4iGeEDLWqhMunWdipzil0hAaiyQMC60WqpcZMB/vRY59gFRpWZ9X7tx3ggrs0xZeSnKayVvvznWMivmctfrWXW7vgBu70SW\n  \
+        \  laKU+g0MVSKf4r3zfNsad95pXhOBvJ/Wae7CJO+Uscb5vpKLyjgOFiDprUaeRF03Q+VLltHeil1odsKMhbarF5RmH6BvjdLg5H3PpoDv\n    r9HlBbapVNIQnGR9W7TsImgMU7krHWUYuCgTW+gNm8tFoSUDh3Jy7J6q3FggJXXk4SHLxVpijPlfhyj8elonHsNfvY77ZTNzOzabBVEp\n\
+        \    NHg1pEBudoNabbTdWkYMbAaxQusH+JgZ9Un+enx4eBh29jXU9DOIHHiz+cZK4ze2Woq0GQkCz0M6aiGN3VduTZVeNlMiCAX38DRujWpn\n  \
+        \  Vt5ZX+ZQKYAY88ouBj/zwBtNzq5enZ/FfGVteTIcmmQl1wJiUXuNqI5F+XEIog6bMe6Np/C5xEZLPaMUTCkS6fP2ecgar8HXZtqiyAy2\n    5JGg9ZTAA/BAOoajPy8vXrsfvoWUSUtjJIK/VypLMQpOYEtmpAPYKhNPdSUBXlokNHOhi7WxGsn7ACds3NYfEMKyjDExWqg89QnfTCVO\n\
+        \    pngnkhhkYB7VyaTIcQLwS2UMMbLVyZ4Za8FnslZr7mm5RqWk8aFjLOqPCAuTCJsP2a1JqBb0JLJi6QI5SnelGnZfByJTwrTMpb+kyFF2\n  \
+        \  VU0uCqCcdQbofVj1ZiKEchG+iznKDWsbgLtYAz+558SxPKFkTPxeRMICvHkE3H3++QfzhXaT/9BsdMh54KIKCgr3hCPqs148ofhhu1KI\n    7xJ6J+E2eaLbZNdt42TTd4zEWgpGdWJRHT26HJ1PuIO7zsdV6e7c1mV0MXo7OX05vnIW29VuEWyQieod9ZUNfmk298f4qDtTm+2Oj0I+\n\
+        \    viuhZegVoPeJMhK9BBi0Ff1MVDlKQIdsiU3nP4KnfmOP4m83nVj8ppo3x78P6oQ9bnx2y3uI4QlHQUT3j+Lo4VEc7RFOHm59yjtqMWTa\n  \
+        \  82tRX/0pmZjLrPf8t7rcIB+lq/3+XJOgcPNXwDW3dZ1t7arcAC7XXHHvS+ARO3dzb1YY7jDYCU5vHg2HLQfDz/vQeYQxX/a767j3JIcP\n    aQW3oCqVt8g3/t3jJRDEcecRXcGaJAfrO59Mx1eT8ZS78rgjprby5eoDR7MZbOfzoBEAmlTrpH8YIrk2swcGj+e2byVfAgdXrzv1Ea05\n\
+        \    3fxWD8PdIyjEeTVLZZIJ7YhQyzY6Bqf1rlKVIwSkdK0sVVGnrQpKnypq5jYhgzlKCO0BuhBQs+5CmuaiZqKJPNe1u0pyyt8tKyD46XBF\n  \
+        \  U9xWI/Tpg9eJWm2574DYKvfTdfuBXC+cPG03cIfX9+SbaPPp6bT5ur5R4E8UeLFPWYP7itfBEiF7CRT+5UwIupNzC2j8/j+o0Yewc+R5\n    Sy3STPb6oTl1AVE9HH20hnvU8cTNwGMtULNKeorOo6JqwGYTuU/pShczurrx4L6SqxzrUPStvtk1Fu4WyB9xOaFONWYHV28nk/PJi99H\n\
+        \    FxfHA+dicDa+Hl+8ej14+wIIjg52I96P46CuU3RRtCwz11rtWXr4cPAZD4+CR8y/YZnhv9o8G4xOp+fX48G7V1cXZwcu9B6EekV1npKj\n  \
+        \  p1FFz4/prnH8fItYcwVp+zL0nB/Fsr2c41BpSFH33Y4V9C98SI1GN/a13dQQ34iswkerLtR5/4Imvf39BNKZLvsG1qiGtd7tOiHGz3fI\n    Rq2ou/Ks6w6Utwvtp2R6u7rXebhv2BFjDxL/1y1rEXcXH/e7xLqRvQvNJuN37I/R9YiH1AEtgrB5oxGZlTh+/pO/uH8vilbyLlVLyDdu\n\
+        \    pIud+xZuDn3XrXQw11XRtTWXt8jIvehwd9UUseaF0Gm4bcz6LxHQ0Vn8BH92XLdvgk7a4gzZy+n09Ru2PSXDnVcH4Z4LvzvqMrkUyWb3\n  \
+        \  XUb7moBC/wPfgoyUpRIAAA==\n    '''),\n}\nfor name,(expected,encoded) in payloads.items():\n    content=gzip.decompress(base64.b64decode(''.join(encoded.split()),validate=True))\n\
+        \    digest=hashlib.sha256(content).hexdigest()\n    if digest!=expected:raise SystemExit('V1153 source checksum mismatch:\
+        \ '+name)\n    (root/name).write_bytes(content)\n    print('VERIFIED NEW CODE',name,len(content),digest)\nV1153_UNPACK\n\
+        python3 \"$RUNNER_TEMP/v1153-source/install_v1153.py\" \"$PROJECT_DIR\"\necho 'V1153 native live launcher and brand\
+        \ installed. Next step compiles NEW Java code.' >> \"$GITHUB_STEP_SUMMARY\"\n"
+    - name: V1154 INSTALL real 8-category source hub and observed ISS globe marker
+      shell: bash
+      run: "set -euo pipefail\nmkdir -p \"$RUNNER_TEMP/v1154-src\"\npython3 - \"$RUNNER_TEMP/v1154-src\" <<'INSTALL_V1154_PAYLOAD'\n\
+        import base64,gzip,hashlib,pathlib,sys,subprocess\nfolder=pathlib.Path(sys.argv[1]);folder.mkdir(parents=True,exist_ok=True)\n\
+        data={\n    'WorldSourceHubActivity.java': ('03a5df36ca4f0811a28d6a37b788398dc252faff992b62f698bc7031032334e9',\n\
+        '''    H4sIAIIx52oC/71b23LbSJJ991eUEdEeoA1Boiy5bbFpD0VSEnsoUkFS9vT0OhwgUCTRAgEuAFLSqBUx37IP+7zfsJ8yX7In64ILScne2Yjt6LDIqqyqrKy8nMwqLl3vxp\n\
+        \    1x5sULJ+VRFkezeO4mq8h1buMk9NMgW7lZEEdJHC/qL14Ei2WcZMyN/CQOfMddLp2mlwXrILuvb3bGqXO6ivyQ7+q5cKkn2dXVi+Pljh4vjjJw6HTFn63uiGfOdRJstc8S\n\
+        \    dzkPvNRpxWGcPN09vl/yqevxpyn8xL11JyF3zhPXD8BDWzVsDVkH/Nb5hH9292D8ToHdBv4MuzhdZTiHp3p7QcTdpOfex6vsKZqRl8RhuJMBRTHmd1mlP05mzu9pHDm/jA\n\
+        \    b9ZpK497u7BpPfuZdV+u4W4XIVhs665vx1EV7h45WbpKUTfI7ozPWyOCkW+91du04QQwjTKU+4P+SuX5pKd3ej5SobZQl3F8/1PTEanUE029VJWnSRZcvrYa8VRxG2GpSO\n\
+        \    IidBd7UxgzydEVpC3nYzfhYnCzerkqyyIHSEZHtBuquPBu5ofoK6F3tuuIt+HCz43+JoVxdMyFslCVlR5457K0h+xJN14H0ncfo8mZvFi8BzmuLPaRyH3IXsXuz/+CP7VK\n\
+        \    sdH7HlahIGXnjP3AwnMFll3GfCzUArOUvjVeJxxu+WMFSeOKzP1zxh6X2UzXka/J2nzOcZjgSjEu7FiZ867Mf9F3JWNg0iN2Re6KYp+0yTjsR8F6uJ9lCYGq7DT1ne8PCC\n\
+        \    sTSDg9PDgyhjp+cN4SucZDYxj+zaoX14bNnsqtnv9Eo9tTf2m0P76D26Pl90x51S1+Hhe/vwCOOOfrJsLEH/tX5t9kskb0FRe2sfvnmL8e3uZXni4wO79tN7u/b+EH2DYb\n\
+        \    N/Xpn8+NCuvTuy37216pvsS8X+7Qu7HLQ7o8aD8akzGnV6I8M2mt1ha9g8G+PjqDnu9Hpgmdpb3fGvrNW87Ayb9PXzYNhrs37nM30ZNtvdAf6OP7HRuDnuDvrU2u2PO8N+\n\
+        \    Z2w80vrLJFhDcRUDyq2zhRtEjYjf6gZTOnUHvucSXfKbaVnbM2woJs5Mfm/kSggLvB1hmyEfz2Hkvu4wd8xW0UU25Zk3x0jBWaXLnLphyisTaBfJsiALuU1yXqVlgrInhk\n\
+        \    KmqzCr9MvDYIvY541C/GWKieLLJX3kjSxZ8XI3KaO/NOnPnfWQ8GyVRIy+Wubdj5DkkEuTSU2LBNsO0mXo3l9yrOtRm88jxO/7187x1Ko/7tpa6E54aCpGU5tWIkMTHzzS\n\
+        \    OFuzOIlD33rIB66FCPVXM5sHqVVfA0Jk1GaWv4wwoUmzltqENptiBaseTE0xu+xVYdjUH5x256x53RvbecPpoNe26koc68rG1ghxEBviSmZWjmfpkoeyJe/4x3oodzvyDy\n\
+        \    KSu0jZUuztyX5zr2bvHVr1pTOJEagXl24yg7LjoN6h0ZWe0PeFXGgpe2lt8xgG0Y2We+QuuK0++zz1kmBJUUc3rZLQehBOJJe+5yZ+Q54dDX5t/FtkvC4PrR3ZwifZSq1p\n\
+        \    AEn3CoxhThPM1uB46M8b+Sf/JmyAsU2Mw3whlc1m2JyYWB6ocJF5SxLxZAjyVSrWO7BUD/YV33DRZtmFX3sDl1azawdEp/k9BTydJTFQpOkrxqAtkMjLRgQI8eoVPjqwzC\n\
+        \    RLPwfZ3DTmiN3pyf6+YVnsQc/SksixXQjINAZLDuXhSTANEE6kHZ0w4zXJs1h/ELUQWm4oBHPsxlzvfYDjiogDS54q0+qmHIBNQwWrW2cuRpYPNUvuH7Cdl89sQmp5XfTq\n\
+        \    qGXSQUgUbMo/TrNFzvnrp27nsw0Q7CwJW0kuwabnwu2ZnTuPi80zbj1Ib5bbq9GKV6HPojgTXJbkwcmztCioSicjMU4fUiLv/Uib/PMAckwogqtILHcbteCcM27KHIBNsO\n\
+        \    iKQkDeMbHqtP6cYy4NT4cQxD0gtmj9egmyJHDDr/24KZDYqQt/AS4+B5Ef34IjoU60FfRIHTw936LoA27PXDW+oBKnp84j4f++4jhkv4GxSrZyv6K/c5clrmmQKzeEw8rp\n\
+        \    pSJaU8yp/f2JCL4WqBYOyGCBBblliXCwkItXI0gcZ1ueR3lW6hP6mJDxia1U/JvzqTMcd1vNXkFaNvVDadxH8o/89s4qaAszK6RT2I3wZESqRJa7obkA0MoRGe3Op05vcO\n\
+        \    Vcnzf77SZj+4xJMDHqjq8FeGDDweDSIEBFYMimcAdhKvPB/LacUC0jwq6anIQGFKac2vZAQavGSdXWXEkQiGCmwbxQcm/OvRvuC14AvrSbLE8pp9FakidUIpzLr+Kwih51\n\
+        \    VEU/SfYskJ0EmjXGEFLXEaIgt78ZdXBq72uW9tAV5aFp0qe0R3R+p/qU2C+zmO5aNIuXzy+pZwChVa8MDeNbaM53DRakankyM8ImQeOgHvws7MwJeTTL5vXg9WvroYyC2a\n\
+        \    IhCH4LvtRzlZ2I3FprFaKNndsorWp9lHD7pKSgcgiJT+XtpvrrtDqEhMsUJaM7LofX443oyti/Dj8OaKoj2HLNqpvBz0cfId0TKaRcZpIjQh4FbztimYg+tO9cBpb1oByU\n\
+        \    MKk8QAjh1AV+Nsnt6+BXMoz0GaNIdxuEFHDFHtLvtAWkSFqYKvI+6Ttld/l4DrQflLK0KkTfYSRp1UDU4F0mIsX/JG9lh6NI1SyyCIS9TTH7XIyXTfmuREcRwYeds2FndM\n\
+        \    FGg+thq2NsUQgYjj0rjUhL3As6+zu07viNJcRemnqHViktqW5kghCzvQtqLbZw2ez22XlvcErsl7ue5J2I/jeM60l3cR1EQVqwrVVdAbmnMA4wJdDsvWk9qBxO+Pi6Tlqd\n\
+        \    dL7KgEOiPmGRugZA+ahKYqAyeVnBGMa37KGcIBC8t4Ho6ujJM4c8bciTBeuBqBtRnegbfh0jGiuJ03au04tdP19I5bjSi5JwfsZiH4BMbqUG59Wrnz+AdyECnITmxtVMTE\n\
+        \    rc0Fg6LgFaiXXXntgrDR03WNLDMg8C3aymsan0LRvNpnGP//YuL/d8n11cnCwW7E/X49afDFtWyJzrERyX0CRVGDP1B8J3eaOBQYaV55VTZyqnpzVpNdPaeVpacu6U53m0\n\
+        \    RX41bUhkqOYz+oAdOP9liHzD0KukKnqZ1ofD2sFH+J/VJBWzQG/RYp2klUVztOrmUl+62Vzk62GwCDKLZXMSOSvQ/oNOm14S6VOJhhjGaLN5GXWQz2EaF+Px1Uig5CAB/8\n\
+        \    pItiqlzGuYW40WzYoWk9a3HEowik7okadyNGqh4yD3+NMB8kDZQ2Va3fy+aO5G2EnkQQtCBL8h98GYl6Uqpgj21HABva8SqjgheBvXcLl7zRl8vGEbbb7mYby8niEBcWXV\n\
+        \    UN94DON4sS/Klqa0+T1VbbH09kX+RiUTiTg9R9ZklvBQvIWAaYpUQfa+bByC9e+QMnIuDT3lCZ+ugtCnOqhU/3KbmcMJsGKW6t5ISiU7pTYQV4vqLFEOudyoksuNCjpAlw\n\
+        \    0DOdt7B1WxHry5m/z2BcFNmqT4enTw/u2XOokjqt/Og5CbZtRAZk+qCkLLetnYqyEHpDsjHok2hN9IiqgwA6nF35CTFjLjaON+KsyPTSiBMZRnkcBAGVkWS7FpeT0KDxfe\n\
+        \    P3iOH6QqN1DeeCttV5FAYCVdQHS8eEGlnmbkj7gC9hIu6oy9gkRTHkptbxCOqm8n39IaQLmP4xfur4AkCV/Ea96UsCnVWxAFJEMGe1GcvRbVWzcQ08B3MWj4ClERm4nXAR\n\
+        \    2372buP//xn4Yt/JKcJg9U8gMOzQIsFEGByCVuwTcsS9oe0sd8NzaR7Kov3FkP1OUowzCu+81PzW6vedrrUE1BOEt+J4rBPE3dGTcLYCwGUsCAxywKNIk6cSpGz8t7CmTV\n\
+        \    QnjWe7ZKRa0qvx0YA2Uw/E8kGBNP4R4RSVxd/0+BnZfcd7RMtOaoCEhiIAW+bxBXdSpqO8s4zaSUcmVIeZ7bkZJIJPDHH0F6JjCFUDytF0SQC7CSelgPGnMoUs2MTmmL6i\n\
+        \    rJT/ClJGy9Nhj75z/+g32H9lAKReACBnYi56B4YQl9widHgA36IAAHfaAyUj3nRRQ/9DAnSDuLJbyqJScw+gM2OB11hp/y2wKcIuhDfSbKKCFzhh5/tVjc511IYZCpi+JQ\n\
+        \    cSRq4Udturtra0Ixdd5ni4NDvNiOhnkwzNO+/IrEUlVWRiNz1W12R6zX/dRhZ51Om/UHY9Ya9M+659fDTtuolwYIlb1sDrvj7mWH0TA6kFJozIOnDf8Fgayh+jxk0KeA+l\n\
+        \    NNwFyGSAUvSPdcNE+u7AQOdAWTLnRBmcJqMYRwLZyqkOki9m4YtG6ZMngoRrfWEaSZB/vb21vHDdJUuHe41n0/9lYLnfIY1tamBledPru6Pu11W0wKi102rzAjIikxm1/q\n\
+        \    eQiOaUAGqPZ2yyfYHGciHtB1Bp8lYhWySbjdaTAD92C7BR1N6B3C2kX2lbKJUAoOM0o2WZdTw0AhEXLD+5rjRw4LrB5tfulSnG1xh104uKJNqHaBiwiqpDf3exHPbuPkxo\n\
+        \    mT2b67DPZJOXi6jxBi2MfHB/QfTC6/OWeu8BdAOlneZhpykCwfugocfiPOUZF6dHPP5FC2wKlBwYsjomg7pajXOKhXSyNuHlFfvRIUP785liWSgsu7xgaLgeDtTvL2xx93\n\
+        \    sO4+PpnHVunLW8uilxhBtOJ1P17RaYdu1rijqdriu/nWlh+cvtu37BBhr9x7XO6t+JWXqkM6TgQjTIylt5uBKf/445LQrDtJBdWH9wflFhB8qL07KDjNl1E+AplBmAYzxZ\n\
+        \    lCBzWodL/b7vTH3bMuzNty0E64SQ2a87sK/YFtGKUdaIPRcxeg5uCjbjvBHCo70glGnqbYxmACbLqG2f/gvJn+93/Z6q/wJN1Wc8B+SMVnrRfaRmBL0n4MG8IgidtYx1Ie\n\
+        \    VJz/69d5PCm5t0JNEEESTkUZug3JhF/l9DIjtRFT5AwGoq24YQQJcZH7JWRODGO9OUi14vdiCMjIgNsN++AJnzIYds+7/WaPnfW65xdj1m6Om7D2XOtl6ZYcnd4fNF5KjT\n\
+        \    wVOHvOUJ/xC6UL8J2eAXb2vGOAE3Bu5whX2ZyD2HGz/XVtP4XYwjAg13B4fHx0ZNjvlGt4kes4Uc9d8ICDQqZB9wmvXhWNkJpqtXJZdUcqllwPh9BNNuxcDYZjRKOrwahL\n\
+        \    YdZ4WqN6QDukRAxgJpKfaCo3lIujpTZlNwvRSIeFo18s2Q8IUsRTYbQldrd6Cp43u/QyRU+hFmIlbLPq3TeEWphX4bYqbls6rurheIBXiG6uVIP+YNhs76OJQly6P1s6y/\n\
+        \    ny4/lwcH3V0I8aXp0NhpfNcYNmNOxa7aB6bBtVZ/IyiyAyhapr+7EPoeW5g1V6dFeJA0qTKl628FD6uMsOxhic/tJpjb/2m5ed8rsNyNMQ+4LBVehF49dWc/y12zbIO8Fo\n\
+        \    6WjjZBJkwBzaSiuDoE6tC1Cvopsovo3yQVSiU9iM4jVhH5eptz5MXhfl6GUTQOfKS1eSueYOhqfdMewdDDZ7g/Nr2lSLTmuM0yqYVGdVJw+zdGc5YtAIik04jgRZQBhnIt\n\
+        \    3JMVQZLDyrBlWYo8EeWVqsfbCelL3Wbq3kKzWvCrrWEVDwNZ4xzC4QDEEvkXVo1ownvVHlBc5uFKrQlyRi7e4QWjEY/iqOCZAb+dX1+ALudASvoIiarRaw2jZE/dztt+VA\n\
+        \    cTv3GfGOfe6cYhSh9VOCy6rImc5JCrLcCSTn0eUEOWOy3tBdphwJVhPJ44LwOgsW5J/5YsJFjV0fVsroJvaeNa+6BO19yCfArjdR3S0RCTinVtqBQzvN4fgCfArmlUQENC\n\
+        \    9eL5XZJ0ha7KPjJtm85S6YxL3ICglCixdhCeV6EzEywY7WbhC6kyCk/FDC0U1mOc0FJivws8SoOoFR86wz/pUCWgRWQI8QRk/YwmCCTwgVZf4oY1eyljhaaBCltSImUyqL\n\
+        \    ULhcMj/mMp9NPfAfJ/pqk2VxnhL5nJ5OpdUcaofmlR57FXqn35D99oVNqbjSeMgRzoNxetqSelMSiaByJhMvgECc1c0+nHO6L9717Sfw43eL0Hi0S5PAA/zS/FuHZLQ5l0\n\
+        \    hOwt/dv3OISMgXo2kWAtvbM50Nm/1Whx0ebUwxTag0eHgkZuARTVAd2O5cj0etC1L9Xq+zxQax7d+W19/j0Z7YUnWeMaaAQXUAZwg3Mnn5vcEN5SpU86KXGiShmRDZvqGd\n\
+        \    5WMZz7tS/0KOYFOKP/nLPhp6IkQuH5CQsM/w1YT62dT+28EX+bf2xX5n1fP5SgiQsR1PQrT6qjng5EplG8OWRZtqzUYFiigG52vsDnpMV/hhECHR0RFhF+zMeYInnRLAFC\n\
+        \    ok/SvaSgLLTSQpSgd5aWs4GtWFLdBD0XtaIeRZ8aL0aZcrHzZWsd93oguf1xyCf/QQKt7TboNw6T49kha5Ifn7/RRuwpt/FAXNxtuDV3NwNKGXT5F46PcKcYMnDY/uoTzE\n\
+        \    0uxVQrtI5TPAHShEvskD4VayVwlOr14Jop+Pjv9PcKR4p1RJeQw0fIVXj8O1qGQYGxncM0+Znkc6VHbKX5xadqVPbCi59+j1jW3s7eUIZQPIEIG3A8isqOJfym4oANiMMh\n\
+        \    mqmwgFmq1cuIyM06ZEvUusuZE0CecuOCxCcBF06G6ZTh7BBGeKfARr5U4dvj6WZXamFcQuFHUzwOzQrZ2ARTJpFGuEdKHpM3VbQ7Po5XTcq1f3rQusT5tK+e3vv2QwwTJb\n\
+        \    79FPAJAlzFcTqjjJGorgR/yyINd2Uveynu8E4P/P6i61/HuVe7PQIG5jK1OKhxXGhobPXQTxUDy1pktIrEYDnSzu0cOOlptyndUNB4OxJX4M4wYRzsf1V2G2kwOtsqKia3\n\
+        \    SvcJLykixOpKYQfzvMiA4e4AfMqE8SblBRwM9tSh6fjlYCLe0nwWyepQSa7r9lRSL/b100+/1Or2JMxCZpS+l3AQoWKRlppF3PkdwCWjjhCArxJIzpWReZ3SrKg0zZupQO\n\
+        \    UmDXeik+7DSvTdBfSE/tPkf/xmttitL0dBYg7VHGKAS1YB34K7p4Ypl4Dfi01eVv7LdxGfPEW68H4/ocG/sbgY2/UCIlLoDOT8khDcUrffzzy5XxKAxKZzW7QIWY8ETMKi\n\
+        \    FFyYaW7j2V1p+vhpC4nCRYcvptzD5JbV+57L1EPVHfI0mILmHwH3V7gyTnc7v2vlxFVYuDqKEYINxRWt+gmQxrs1XPmlbCEoGqNGqgc6Mii1bDkp7g48EJ9av5yv25Agg5\n\
+        \    ro92zBMs10fPTiQJipm2TDQ/bzYcXI+7/XM27Mi7vZGyUCElMCTqdDNSK4olzVE/VQTrI3R1r9ZHDAoGVyHvFKhv2L3q4J+hDAUwey9lJmkkkuPpVLxlCVcLbmnEpnXlew\n\
+        \    GjAb4BoP+inh6VYWOZ+V0AchdGlFEWPBO7Os9TpUFxcZKASrw3QS6qCn6lrdkbxrZH0Z+26t1QiazkC6pquyOPU4JTF0B0Mh3hs87FD2eupFsKgzVnp+dXOSvwUlB+TxYa\n\
+        \    1BVknrQJPvI8TbCmLyPLrCVBukcTP8teqze4bp/1mkPw1mw3yeg/507Tnc2gJ7QIvWYGas6P26YZIH6ZzLtZRhzBn0V0YUppurvK5pSmSx3Kqy4V/lzfTRwvjFf+NESiui\n\
+        \    MTVj40VyZDBnXhFnMgj73jiAoWtQGXzrMuJbykG64sVYcLJJVU3edDuVxyLQGgriBjI3wGt23svuDPMyh9bWjv+GFG/sxm4d49da2oSJExNoSDFGM0jq9XfvbIlo1dP4Ok\n\
+        \    nzbphy2mRd8KEpN+cpKqJx1m8RZEvdDAqjpX0L/ZCSL1HE0xhlNvGIZ8LE0f6MqW/iLA4s828NKwi68bS7LbDuV49DMcsMLXL6s7cJABf20PWteXyIM1KoOw6mJ0RPfWRS\n\
+        \    xDrEPzxgSAmcPx13HzHFEInIol5Q8NCA8ZQcYXhgqQ3VkUJ1zAIpBi3kAmVXW9t7raW13tLfcwOtRuLz/u/BV8B5GlX8NlkgVx5S5ZkNDtCR5E5+tGVtdLGMTDU9TUVyEG\n\
+        \    o/TM7Cl6dBP5t7dBxyBk+IzMSqK15JZBLB/8FndWhYMXnls+sbfl742UXxcd4MwSqvQENv5IfSfS0ed4MFfNR6mUamOP+npe6mHjWy+mFDe5P4liqgkw2rbCAI8vHl/8D1\n\
+        \    l4VhXlPgAA'''),\n    'upgrade_v1154.py': ('11364266e6616a41c1d0fba2537c5c3a6a089a0660b86695c935184c07d69171',\n\
+        '''    H4sIAIIx52oC/8U67XLjuJH/9RRYpTYkd2jK0tjzYYVTpZG1Eyey7Fgaz6UmUy6IhCTGFMEBIFmK46o8S57gnuEe5Z7kukGQoiRq1ju53PmHRTYaje5Gf4L4zQ+NhRSNcZ\n\
+        \    Q0WLIk6VrNePKyVq/XO2FIEqqiJSMsms7UkWSB4oJIvhABwFZpzAUThCYh4WPJxJKF5GI4JHzJREzXRHFy22yevvRqvVUkVZRMCRfRNEpoTG4+DgYXgw/vO/1+i7AEgEwS\n\
+        \    KhhJuCJzHkaTiIUeslGbCD4nKVWzOBqTaJ5yocg1vGYDq3nsMSUYy4d6MZuzRI0QRCXpjWpmYEYlknDlWtYE58pHIja8eVRMl5+bXxxPMMnjJbOdNpUgkCKI50XyLoyE7d\n\
+        \    T+SpfUR1DDomnakCJozCkoDuGNgM8bEhbmyZTPqFgktPHARRzKSC1AizyBiXOrRn2NbfVBr10+n4P2OgEoOVJrD0es9rSE0aNCzT7EfMxuI/ZgEGYG4ROSH+rd+P1ivE2l\n\
+        \    ZgSgHkPdS9vR+zTdfrUzQpcgxPZ0p8DLCRnUIVUsjiPFLmm6YcmpJHu+eJijEJ9oHKc0ZWIINhIF7NASuPWzAupaN2yykAzNCC3qQcCqpFpmq5awh2w/7+4mUczu7hwvBX\n\
+        \    NK1PPUBNNxm3GqkQEhUlFlO/BzJ6O/sXfN1vHxcW3maU7uxmvFpI1ogtHQvDpOLeAUJ4jgED/gUwtBY4Zbe6expadWquClILDD0Qa+w9cbZAsnqyrj1AOy8c1VlWHOm9+j\n\
+        \    pWcv0h+JBXP1ftzxe/3mGPSyCjZ8bSuiFrIJESyNacBs6fI4dPHNfZhx56xG4M8ILL2ALxJlA4bj+013YmHYOCGPgPkEogcziDrzhVSEB8FCQOShgYrXhCcBaxN4XkBAeS\n\
+        \    xTebI0fcFA5gTo51wUPDSBPenTjGPFVqBOeN8wa5mYAXoXPAq9hyicgtjDQPA4RrtvW8/A+UtSjfJ7CIN/44mi8TbBWQGHwLuMpjpsmLhm7TCYimgJvkhGwDzOJ0HMg3uX\n\
+        \    yAXEFLF2CY3ELY1hA/FpCBazkC75uqD3zID1cz6QUEkNHB8zMPBUs6z/k6VcEklpoPCUr2+BVjClLHFZSAkQTncVUT/v3fb6V9fexw+dwXmHkP/+xz9JlnhI/+K2R3qDDx\n\
+        \    eDXt36FuoJ+XR10z8n3avLSxhC5BgTH8QdiXsQ0zGLd1febB6R+tGHaEA2UFvNIum0szEP3ObnKBvA/bQnNJbMaesMQ8NQT8hQXSTTh4xIRZ+u+UJ52c81FXQu7aOmewwG\n\
+        \    7JjdaTSMBAHs0ZSLNRE0is+ImjFIX6BHzLtTTCHgDxgRpB6aREJqwyQIg/w6ZZ52GvyrMlAiovGYJ1rGqnEjbYaF0u4ivaeil9BxzMJc9mK9LSVkFH5ZCWFqvzpxnBKZMj\n\
+        \    rJqhXp79LJdyUbRkY/CIoZwTa/Xrc3GPVu7m57N6OLbqdfWqA06RrYBc3awMVrB3k51f/z50IRxdZmU0vEJlzYQyVwe7LBswOZ6vLqvDd0HouJ+Ff4oqJjXwewjIbbbLnv\n\
+        \    +x97rsJo3YbRwxKWeME/g/ueBvdTAaE0hDyQsNjucqjzPDEd26237uu3bvP4GLVu0Et6aL7UwjePs5/irXqdLpgGZJlzBkYfpRjp7PpVysDX0PFMkVknL4xydogctAyiUv\n\
+        \    8XTKeFfJ28QRlST2BpewkVYJT4ev8Ky8h3Dvh1VVotxFXSjaPgvg8pkiVM2Mujd48XWi4oIFZKc5K9a7NzD+xwEEMqdNo4xUsXqrdSgtp1KINZ3c3Fh6QvVD7DRlSn/VTi\n\
+        \    6ql4+n+PSxi1dVQxu4gBaTd4FgYMVR/LLLg+NOiQlMGkTD/AIAYTGc0XMcS30MuCXj778xciqX7KHL2At76055BzulRAtGEsdOuYRjDe3/Sur25GvfMsOQyvO134P+qMLq\n\
+        \    4G5PpqeIEPdZfUu1eDQa87giYF9sCs4bTzLOXnoM/HX9pFwtpAm182O/PdoubZT2riEOBFuKtGtLzfVXQK1xz6DvCpd1jIdiKhtdMRgq71jHdQXwPkT5iX5f6YSS3/HuI4\n\
+        \    Bm1E1aq5wCmXEAbkXtFjwiVd+vWPg85t56Lfed/v1d2vu4BkB2AE+u75brRHsChN0BwOMSr9OlDX/xP8344gMkAtfbzD0C6eG+1g56uFTFU400T31IYYxHifLl0BRKl0Bc\n\
+        \    j2Fd6A+Fd4A8ESeINFkry8U2K9nVvw7w/Dq8HV+K8Qe3Az9F5tQDaa7R8kRuyZUqk8azRoGnkPMwYV94yBO3hUNZbNhsy7RdlonZ6enNR3cwH+hXwBRQGUWMqHpTyeqnMN\n\
+        \    sesAguYZg2AG8QZ04LgxFCG7iNB072PuLxVN7B9gv6LQBtJIyHHUTPAHtGOCDaEXce/iqrcKmMlIqPOAcwFeCrKAn46xx69X0EYeTMDL2esDyK6raM7Ag+dp3T2u5imb9T\n\
+        \    v/+O9/v4Se0YNF7OEaUsrcg34He7ER0LiEKB1BZ9WABHzcP8omOe/ewstzpEiN02I0AXVDSwUpHuNMlTCZi2L8t7OgfzAGbDRZIdrSz2zSg1pnDj1rnwewtvdxmIXjH73W\n\
+        \    5L/+kzTMQ93NaVWQAn+4YZigWEg+jrqk/gL1Ck9Gez9prTgv6jrI41EC3YRSkHYcqXqb3794sU37CarmYGYXuoLm0nnExbTKBF9GIRNnsJqkE9YTAmo2wGg/bRH5Pvdzoa\n\
+        \    3yI3iD5aJSryPY1wXbj31F24QZG1OKDdSgZihaqBJc5hH8V07Ks9sGGi2dTXorgWUpWoeRBC7XuwzrnkMXSfpwUDez0oYO8ZpDXJOubgqz55zdXzWlQC7OpPRxDLyVeIMG\n\
+        \    9Z6JXdYECxiYtKnE5It642Wx2RKTcjBjoVWFd1KJZ+ocfQABa1FzPpLV5fqoYfrsowZsdT1zIoA6OTicn2vmHv9+MZlAAA5vYCEm9oYvEqgswUYZnRsMrSR9ehNDUadrEa\n\
+        \    g/smny0HlDZus6ZW/KAL0vkvjkUCXxvbO1m31z8ibFVC+PMhY4EATRdg7JNuY8ZhQi5IxjWRMIOlFAFVupw3Js8/OOFAp9hkTfXHB7d6aMzxmkagIxm+4JADkvCirCtK27\n\
+        \    rBUeKupfhzwSuUihU8kBbeivFNTxTIzWKbN1bO93/gz97+jP17274dXPo0+dm55LkkUcA/aTUcSvWHHTPv8rK9c2iZaGuo/q6lPMXKdPW5pdgq/sY5Z4QVXa2y5jPEAXO9\n\
+        \    sjdtbH7TiQPTVdLPq0By8dfdQKzxz6WLt+4Mi17rj1j6Ofj95ANVTmSLduJofwh+009TDDc2Ab4H7GpA4n2IvZjvODrzW0X8TtuIpmwT9gklv5bHMyoR3mDNb1IMZH0LgQ\n\
+        \    4Hp/pQ3v0JGt1r6elk9xocKAKme19mKWTNXsB7/loBFECZh5JalSSWjquZQKyUy5t1pD05XVgdWjzS9ONV2s/8yUSEKJiMWL89vf7sCwmNG6Kuqf5xQ7T1WVXUYGT+lt55\n\
+        \    3/0tkEB01bv+7Q2tDZq02iacLBJp1H0viJdMgcEnPWPYDZme4xALvAWDiBkLoJRR75qWEIV7hJCq26Mi7SpcmSYquJP2XrTHWmVWvQ8DXie/rZG45urv7Yc9rZ8CxzFu2v\n\
+        \    ZoLg9+xTFKqZ3fROTyclYdPsFCgGY8uOmKg+Y2qdus3jlttqvnWbb1vOzoFZlUmfbbS6Y5r4BYbwhR7Thq8/yTjtPO4uIxnBxvv6zGN7G3CxfB3jBdlu7Rv/BOKMwpOIlC\n\
+        \    tfwg6A82cOgOZinqqrWqj9cZJx4G12Chd5qu5jMmTn0cjnzfmSjbgmCP7h6l/0hJyqzir7tBislevIw39VNGqHLT0zFS8U9EFr15By072zqaedlIbhWZ9A49wDKU0baDk9\n\
+        \    2uWcCQa6lY4y7K2KcMdg8opOJ8ICywswSoNhlEDgn504tosJ0Izr1hEwbMyDmR89l8vtMgRYVPtV6bNcrORQLycGWHYi9KFXr8F9TtxWq1V8JSj7eLDrhP/7a6K4ULFMBU\n\
+        \    1nEfR85arI2CPBVjTFI4NdPaBXgNqy8yMnjbmyg6z0l27pMPoUAsXbpvvmteOeeG8muaTfO3ujkmzKxhRK05onr1w99fWp476CrtXImsu01XJMd9uAOU2iCbR2VZ9pO1l9\n\
+        \    f2lQvNU8ttr4FTmfVG4g2p3B+c3Vxblv4fnLWaMhoRGZgxfmXQJeRqDpfUMw2TAwq9YbAY0pHlWLu4TOmUxR4VY+7hqiTvsAogKblviZ8vCaGYpTwwsZPpD5j8v+NeZmYS\n\
+        \    uI7kwhDG9mvF9EMaaKKMEvwFAczefFF2ewn5AHiIkXPKSuKmzQhKuzvPCRNvRYaeoDmgeVeGijKsEPdb9oFZc3AEgiqc8CBjxhNS2K/3mFpZptPf4onxBi/ZjLjTGfrEiU\n\
+        \    4ExNmEIAsGh+ycD5kn+ihyA297Yve3j7lz28ijseFpLXjPxKWgcuPmjpCpKgs+FibG7A2CCFu+HefdwX+exfW9zVFNkqO5YpUdUJzAxnn043Y5oWMR219eQg06U7OzZsqp\n\
+        \    M5jp2bvsuSgOM5uW8t1OTojeWCd9yFLIip0Eyauwm1ccmzxmhiHkSgEOLZPTR9OqHCKv54qxcvbl3oQXOJwDIffrs8ZNCQ4cdkC+8mfBt7ALoF7Hr5ctOR/hJ91OmOLm57\n\
+        \    R/orcz0jlbOT08ojYNXa7j7wxHKbzt6kZ7Pg/uKMkwz16Ode73xYx9UKky2520WIk59nRmLcwo97rdO6dgMjeG1cjpMGCClBO76sipUY1fSxu2wYrCxcBtLP38vBMt+z/I\n\
+        \    aItXMN4Hazvfn0MkOb6yPVE90qsN4dp4YRJUVZP1N36s6+nEHhjRxcDIYjUHTvnAx6n8jw6uNNt2e5qYfeCT/bF3xcc3PNkzPaOn1lp9sXbbwZW4XRFPwEb90YYaHTsvEL\n\
+        \    in0glEHn6fsaS0cO50Vh2tahSANSVOWi4qaZvhi0fWUpgx26roSLbdclepHtozKjsOsOZFat2LPNJUIM8LjMQ37BDPoall1EbOtDFDLIWnCizyhKRYhbytSahL7hmH+vVH\n\
+        \    QsgRM8KI8ZfnL7H20DpgIlKQAA'''),\n    'naturalearth_coasts.txt': ('5efba15c57c6e1535de8d2106f4b30f4fb50e61410cfa79f5ba9647a4a101c88',\n\
+        '''    H4sIAIIx52oC/1WayXXDMAxE76xCBdh64k7231jmD2RbuSSiBW4gMBiAes99jvp655HPXI/3XOegVc+Z1dpnV6vvs0TrJ5res53XVrNcZ6FnPQddSzlHcbMtNfM6J82ncO\n\
+        \    LtbDT7ubOFCxOVcfbh5po01SlG/gmrbzl7eb33OBm3eIXXdc6lVj4Xs1zlrPV4SqZ1Vj1qe3kd8yx6XpeEj1xP7WnNs+l5ncXd69mPqrFYf2PkUs/sN/ts9dC6vKBcGK1d\n\
+        \    Z82x2nY0JojG2EebZw6VdDV2PK52dE2NJoumVUt9tJ5ctd11DL1jBPrmQ6rPaLVn1CjNF96pv3TcpQ/GVH8tqmt6Dkdr2wy5GbLP82oM2VnH6GftxyjnNaM162F5Wtagfh\n\
+        \    t+t5h8jFiYph16JxXaNsY5xyFVu9V1ZHo3rTlpWkY0tifYDbuQXI43ddOY6rQrmqePNc+atje9ug6MiVjE0mYLa98xlhQ1bURbp8vms05+lbPMQ9op2qAMVNYkRdBdjSUx\n\
+        \    LU+anvpnRS/bAJOUr0FkGk3Kw+4sxWBa3uhMX/VGWtIuNZgbsoyjy2Q1i5YhZeg8Ci8u7JWGppSaZA7jXMwiJej84/d+XoMXJcZt82jdp6WzljXJ9rql6uAFakWq0sjN68\n\
+        \    oNMVQxLxbZdD680fbnUe2zU5qsR13YxPSMNaxejd0QQntSi5Rfu6ectgeZPaqQ8ms75HGoQp5S5QManjeGhnox8mKP+n3mONR+yKKrdLz1bx4l1KrGmjgXNr81/1GyjsNn\n\
+        \    f/UjdzvtkslWGqhVk7R87DjffCzvT6vV8eT7rGRK/QhL45nf8RSUICFZc4mT0lFJLdKu9CZVYXMylyrsyD4CeayO9t3Ppt5ShezsrfWxVXn2ptW8wGaDeFf7mY5/Cbhqlc\n\
+        \    WpZQ9814GtykrkgW8dyjV8kFlzNUEALe1LANdC4/aagxXkMIytFiNX7+nSBF37Vz/B59bcshrWpRZYrdaIcxvNM6B5YR54K/vwaTcDYd72O1lL1uyCtBGHzwzDVoWzdVTC\n\
+        \    mnXeOgrOU1KTuR7omfIHWzoQB6DPaK1xaCIjjXxQ6vknmeQX06gOjuAlNTBd/sMZGChl/JnWut8NC/66pR6rylI8gNBu5LQx9BLYq5ZgWS2MJleD9L9+SbbQRixzTGClG0\n\
+        \    cLnqXjC1RtwMQ/ySQHd4AwTILNswcg5g1SFIMsPY5/kgnIjYijnY8wVOGTkAtorW4Mv/mK0QfTWoTGTx81rmm06m7IXp5i7oMG5ATyfoI4LdzDrRrIPqLXVzAhWD1vRuzq\n\
+        \    XySuHz8Fibujnt7Ipx5dEoZ7D7aJJ26sCxzf4358iCTMEFhYHlVIlA0Lw2GAF+DgU4geKIYwvx2IusOvdpTp41nyBLEkWWeE5laIN93vNO4xa8RpQUx2KBpmDsutaizI12\n\
+        \    Tb/6ZjcpOKac19hiS8TFq2fnlJ95p/kokZhiPfLJ9wqa0JeeSjNnDRlLaY20ER5DyenZh5h1dcnjhIUcc55di2L2HTLseXbHX859ktzbApAug8DBxudPosZrrc5SFFFxaU\n\
+        \    r+4V1fCAC+xxy6rxEE/BBA51j6E4MCMIc6yZxq7e1NJaH2JJb8BpjhJt9iA7OYOgapUSB6uAo1abwcDkAnMEa1ELvffYvtbhPf6GTMDXrc+OHJFqmeqyqPKhCWqsZmaB1T\n\
+        \    z6pBkxn7PqMW+xVcZoEd086Q7Dzce/HizAdpahqwRfTibT/SZXMMJ+PMXo04L0VF6s0J2YIlLVoXZ6mR8petjqLxvztG+iAaGAIUB6ikm+UklGCq7empmGR2xQG1i2NG1y\n\
+        \    0P0nRp96KxoavY0oajRPCg5JBULGf3L0ajnmFXJ8WwVKducbl/Hvn2AyJgZJKLzCGGSt6wB07vMRNcgOkJxcPp5dEuB0NdMqnZyDWgkutd2im6C7ROsr6X4cYGssF2u5tE\n\
+        \    2FobYsyQkQeEhU4nAIxMO5E2ao0CuX/DdKeguzILhyTcKsHCdLqfrRWUsQ8jvG34TZPx7/+iW4AVgHWm1zgxVsgNm1pJsL5eANpD4CRxE83s1gnv34N0iCC3HyZBYHjWAz\n\
+        \    vbsBSVEEnD2IiDXUjmef1MI8Tb+cOeDwDoTTrLMbIoxZFar/giEcZkoZVqyALE/OKAtSKTQVWAvuqjdnosjvYnBITnrKUfRX+ud5vEQ5hxmtYEoJZBafNprVIBOmmvztpt\n\
+        \    ONvspmxOZkAPDgcuiMBM6S13k38pmXZtSmIW3L40/GUVwUCZGHNxsPia43xRoaeZZGlv3CejfyQgr4UGNeIYXcEeLuRDhHRnihs4zZMI5oh9SXvZz5WuRI0Hyt5rTGANQC\n\
+        \    idUzDqrwagH0T3bF0CAKqC0ONbBFpungwIskEzqjaLucDBklpHgSG/XMPG9zqlZZONxrekPZMpOZSvMwGxtVgKlOLvndihym3cX0ejhljgOEBGscAQU5paZSV5MQ8acM9H\n\
+        \    iUhSpIXqWEVzbN6KRBaIuFbSJANofCRPfLLExWKONo5kKbbEtLz+vOO3VesgdTspcJOfPLgXXW2SRGdizNX8515T74bjfB8HPrltezEyWccby60VfPSsW7sw3m7S+ybMvo\n\
+        \    fBkhswaphhHMMAQxkZ3ItwVmsACn2JNHxR0tU74y7aXqKo43OflgC+Hl7Eo/D3TgDOi1csRyOcWKUA7IE5+rQ5QWRg0jAp7osUsYdNAOqbds0xZcULRZqMJs6iLTVGIKH5\n\
+        \    PhDhtG0DmzOXO8+2norAhFzqJlOPDaymHJRLMJJCYlvWVIbCFXx9YiS+KvxLrLQHovwMmRE6PNmDq77oFNdlMpjK+5z2WjkFqzPLUwDRYtyNFuwStehDcMqF+uZpzVyRC1\n\
+        \    FzLkbrsrgTlS2rZW5MDk0VqNjFbGrJ68AAPw2t3dCNiRxclucf/JmdHQZu6GwEBHpYEVHKGh2YWlEYNJTAZaagy2yJcVrbMTYlIpvOOyHwg7UIDOTh5HyHRoHf4dx4W5bz\n\
+        \    as+KstcpK2AQowHK5iuToKXcTD9nTPgeJEHkQYmHe+dsYIMxSF2FUOu9oLgiRjw8lguY3knZ+NfsXFqmljwb1t7dXPQjzgg4qAjqtbp4VKwIvAUgB1mXL3+VJaWK/GJBTX\n\
+        \    hGLdFJCToKtUiCIz/kZeOVFap1RA3FGah6+6QqGTlbJFM4sJVXUsLvbPaieDW0reWbI2KPNu2DDjxLSKnvpdY/Y4bVxVK5uk2GAqJ34Q5/JLliCrcXa9mJa03wD5qt15Pt\n\
+        \    M3cI8wLwHsFmokMZeyqHZkDyaMyTYoobryi+z09p0DrWXAHBCksxF5KKEMQqWz+zsCJ2oew1FZpgTHy65IRTWEYhFI2Y+nWMpmhDrX4mw9iiwbBZPITDjrQ4TU36xCR+pi\n\
+        \    aVQtujvsKGgIVh9SLhYsM504t2GG0pCpwV2kpxwFv+mqrbRpXk74OJ7dE0XYqEaNguWRp1LgwCIpFTWbz0MoFcp2rlsIntTwlGHE1akAYLmOp1iiBs3eJ9bn2qETSw4seo\n\
+        \    ddhgzSK36m+DWcHE0DQIkUhcY6nmIJNIqqXnaF0KUgquc0qG1RB8iuCk43lBo9+yQqid01qGZsg/N2lwZwoWBpBlpT1e7+OI5rU+t4dmcs2CADW8pWk81yDOEufZbjKZao\n\
+        \    vfKGssJdoAo0z6524swuuFAIJPY95Kk1kOcs1zvIDl+4jM4djkA6UfHGh1QaUZWftnoX1LFRP8ch4CoPoURCHaXhGvWFbaIv44Bwl4816qcVjgD/iDMQWJASDMtcJjG32m\n\
+        \    EaMW6wdpwpqrwQjEY4dWXZu6I8M6HZpgPTjerEnPxmwc1MApozGvnec8lJf8nfwNZ+LPNuxYztVMfpo0uil4tddgM3qin3jIwN5e3T+aqLWQuAnqY+74g1OI6FhNZ2PJ8D\n\
+        \    afdleyouqc2oZZcgHDELSNy9SwqmBmSitBOfalJls8P6fF7bprbNJnZkUssNzp66mhkI+qMu+63MYLeVpXHIhHanzwCLyR/bvKJmX1ESLJii2zqe6kt3qQUkc71iOeOfLm\n\
+        \    uMHZdA9XhKpRWXSAqHmoW6WjU0LU/D1sJiyH5L2KJTZkNF9waGjwY6NmhQt1j7TpJdT2umXculKiWrshNGi7KbIgrJaXd1XVmTGih6edLn2hLjAGIQMfek6tCq878V28tw\n\
+        \    fxLcEm9JGYdz2hx3N6t9M9UM+hRf810jqra+RBtR1Oos1ylvi/sov+xYZ24trvFalKguB3WUNkpcp43la7wr230oqpPf3hFD48gabscUNuNUYAflcWWeOB+giNh96TJdfB\n\
+        \    930HEa4FtCm8CKRd/wThi9axO+ofT+cqD9VayoEjZVfkl7iQx4RpCqEb9n/zhZZ3NX+D+2TKM5EYUOsAknkzP2JWqwfHOghQoeqSvXWHwlTxDV872lEogZBQAj6tgxwKCq\n\
+        \    jI1s9yE/zi5Z+Yoom+5SKCAbeFHq9U2tb5fMvqe3AZMcdxFEj1SusQrbj81nX9//tz19bSuR4maSsOYbJfiqq8OkpIVns92PSCKnhqxwZeV7Od8eV2vd1aGfQGq2icheYe\n\
+        \    ovJw/NGrAt/AQo/cMFCkrCAji1+64T+0DQV6KT50g0YMEkcT0qRj7HxzCJxIRVX5F0egcy8t7v3RC7viLUsRQDI6OdvufK1VehG8AymTweMqk6KlRK7eQZCiTVi6++ZK2+\n\
+        \    UnzIpOryJMxEIi5luH6iNDPuRX7vXSFsd6WB0pjEL9ceXccr7VMfvGWSCT2ptna3DPD6XcGOwpcNtzmifGTSu9lwCXVcO/maDZCubuhwpsHtKZYITAIZOETwYFFfLrHjec\n\
+        \    Ozr2ayC6NunMuzi+DMZqpk1d8AODG8yLK5o1qRCoFABtRsGns8+6R3/4iJ/7/B+nzBNV0d3lylHsQp8AjYq2ydsrbrZb+u6XJtios5m0RuxsyCvzKtcOKC57E4igXxu3Gs\n\
+        \    OxuLAoQDh28l8nGPmFyfIFjTTYtapvy2WbTPfeZHIJWoiLBP8+CePePwJVsN3UQG9hVLvuY2qLgCT8Lk4hIBfpIwNV9uCGq7WTBU3PnYILZqHCy/Ho9hXPLN1sy1XOQt5J\n\
+        \    hYuiMWVe7LNviVcmV5kGbqgAJQd77rxaS3VxSpf0JY5ycrxCAzZtMdBrvNZpnh3CLJ17I6OYqovkoltZ5OCqjEyri4kSPiPASTb0QlCEPOfiUVthZ5nbPY3FZcxz4EE9e4\n\
+        \    ZOszLoZx1+oRSdWqSy3xPcE/wQRh6y6pECVrc5Gg+2sWHJIDq56aOhv4ctnGcotqgG9Wae3p2gRbo1pKdcMFBVqUVKrTaoVjxwEcahrSm830TSI7XR1hhRTDqLxEVKBAAZ\n\
+        \    IL6+tdRBm+Fq8ERg8xYscGuuXAAhzFtEQgYEuNiMbVt+Qsg1D12H8KxvniLlQsFGLWhlvE3+KbTW5NoQxPycRmmHu6AAuJZZ8zYjOt4Xek00/JBMRcM+IZVejsTrNGot3c\n\
+        \    GsdPSh2MyP6y5dZ7jSWRnEfx1rH3+CeZ0C8Fx8H3BzQ42Khy+VV1qx1PuUStdhgktl8QqMvlS/vt1J+cdx4PMboQySiacgVxNlevagzs+mj1NwwPMfq4AOckgjSsOexzpC\n\
+        \    4UmQMcTykAeBc3TA4cDcZ1j4znav1EgIcYfThM1OylzRv/Kn0uAHDYzh9i9Fkh5nsSvylOed8riuPl9AJGFNAC579dkmIDS+v+juDty2B2w2DTwNzDWB9ickj7S3PQfbvq\n\
+        \    /fJnVLAvWP0HCzapEB4zvFPw3OSGEFHD2nf9hIaI7YSaYmPH8ovRg8uK4031Rc+X3e+yDmsN/zCE32UiUzd5mLHit84U32bwXVj2hxoe2LH97fsTcOXzBUdIEQNdHG0Qhv\n\
+        \    cI3Qx7mj9F8nca6/uGxPx49mEAImpbxoLmC4puyvN2QCGFwPJGKPcyLD76yNvtL+iWCljYWrFYAxO6r0HeLQq/zqueXTgpcA5ni6uhEhy7unpdbni5ZZB2yXae/hXrqa5G\n\
+        \    3oqskQ/8pNLX4zKG4AMu8Z3PZTobtxrvfBd8UWMLjK63srCWuPx5l2hc9thuDIqU2sXNm6lnG2VxBHnMnnyLxHctcsooihcXTK3zYjt7iCRX/NCGYjhZtSvI5bidfvhjiq\n\
+        \    8I1cAeK5CJO9M0R5kUQGskEd2Vzq8UXcr6wIw/6nL5etHFYcnfJz6lUlRQc3FddcWaljv0W2OfKqtkkM4xzjp8/RtaqchfUWufUbq8pdJd9y7mDzlcq3Dj68r3tCapVD/E\n\
+        \    ku/TvHRlj59pYulhE4U73A+lCuh99qFqWGMrM2ry+7OCkiMi+3YQ0I3RchQXP30SHxmFd8LvYZnVbBsX7X7BzcFXCOKPAzZfDpM5hhXL0KtvkGjoFCtf8EAHmnOBFmxA3I\n\
+        \    DQHxcfXGw6j/LFB3nEb+QU36BlSjbliE/QEJPptgjyzXcdGGvz/dizA1VLDxW3qsN43PL9wWUNlsG3iK7YAmA0ZqAZ4xzPAfg45huW+aSmOFzPCJo8/d5TzzNYxkVE/Qx5\n\
+        \    uWGqVk8/f6X4rgQy1j6fh+BRzF9ungvWTF+JfcX4foXcWADf/bkJW2+ux8wv69n+SOUr9gcW6lG+Pi0AAA=='''),\n}\nfor name,(expected,encoded)\
+        \ in data.items():\n    content=gzip.decompress(base64.b64decode(''.join(encoded.split())))\n    assert hashlib.sha256(content).hexdigest()==expected,'V1154\
+        \ installed source checksum changed: '+name\n    (folder/name).write_bytes(content)\n    print('Verified V1154 new\
+        \ file',name,len(content))\nsubprocess.run([sys.executable,str(folder/'upgrade_v1154.py'),sys.argv[1] if False else\
+        \ str(pathlib.Path.cwd())],check=False) if False else None\nINSTALL_V1154_PAYLOAD\npython3 \"$RUNNER_TEMP/v1154-src/upgrade_v1154.py\"\
+        \ \"$PROJECT_DIR\"\npython3 - \"$PROJECT_DIR\" <<'CHECK_V1154_SOURCE'\nfrom pathlib import Path\nimport sys,xml.etree.ElementTree\
+        \ as ET\nroot=Path(sys.argv[1]);p=root/'app/src/main/java/com/sentongoharuna/worldsituationroom';\nassert all((p/n).is_file()\
+        \ for n in ('WorldSourceHubActivity.java','LiveCommandActivity.java','LiveEarthGlobeView.java','SatelliteMapView.java','DuwmLiveWallpaperService.java'))\n\
+        a=(p/'LiveCommandActivity.java').read_text();h=(p/'WorldSourceHubActivity.java').read_text()\nfor token in ('HorizontalScrollView','WorldSourceHubActivity.MODES','api.wheretheiss.at'):\n\
+        \    assert token in a, 'Missing V1154 actual main screen: '+token\nfor token in ('VESSELS','AIRCRAFT','SATELLITES','CITY\
+        \ CAMERAS','WORLD NEWS','RADIO','TV STATIONS','INTERNET','aisstream.io','radio-browser.info','iptv-org.github.io','stat.ripe.net'):\n\
+        \    assert token in h,'Missing V1154 real source sector: '+token\nassert (root/'app/src/main/assets/naturalearth_coasts.txt').stat().st_size>8000\n\
+        assert (root/'app/build.gradle.kts').read_text().count('versionCode = 1154')==1\nprint('V1154 verified: real source\
+        \ hub + main globe buttons + ISO timestamps + 1154 build identity')\nCHECK_V1154_SOURCE\n"
+    - name: V1155 INSTALL native professional operations home and source explorer
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'V1155_INSTALL'\nimport base64,hashlib,io,pathlib,subprocess,sys,tempfile,zipfile\n\
+        encoded=\"\"\"\n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\nAAAA\n\"\"\"\
+        \ncompressed=base64.b64decode(''.join(encoded.split()),validate=True)\nassert hashlib.sha256(compressed).hexdigest()\
+        \ == '359c95ee7126e88c4a326f15b02810a73e152b45f490cf76a826a9dd4935f17e', 'V1155 embedded source checksum mismatch'\n\
+        with tempfile.TemporaryDirectory(prefix='v1155-source-') as temp:\n    folder=pathlib.Path(temp)\n    with zipfile.ZipFile(io.BytesIO(compressed))\
+        \ as z:\n        assert set(z.namelist()) == set(['OperationsMainActivity.java', 'OperationsGlobeView.java', 'upgrade_v1155.py']),\
+        \ 'Unexpected V1155 source files'\n        assert z.testzip() is None, 'Damaged V1155 source archive'\n        z.extractall(folder)\n\
+        \    for name in ['OperationsMainActivity.java', 'OperationsGlobeView.java', 'upgrade_v1155.py']:\n        assert\
+        \ (folder/name).stat().st_size>1000\n    subprocess.run([sys.executable,str(folder/'upgrade_v1155.py'),sys.argv[1]],check=True)\n\
+        print('V1155 PROFESSIONAL UI: source and manifest installer passed')\nV1155_INSTALL\n"
+    - name: V1156 INSTALL actual aircraft flight register and globe-position inspector
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'V1156_INSTALL'\nimport base64,hashlib,io,pathlib,subprocess,sys,tempfile,zipfile\n\
+        encoded=\"\"\"\n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\n\
+        \"\"\"\nraw=base64.b64decode(''.join(encoded.split()),validate=True)\nassert hashlib.sha256(raw).hexdigest()=='df31437fe34944115127cd03b2585c8bfd3af62341a23a9ee44a2f4c7daa86c2',\
+        \ 'V1156 bundled code changed'\nwith tempfile.TemporaryDirectory(prefix='v1156-native-') as tmp:\n    d=pathlib.Path(tmp)\n\
+        \    with zipfile.ZipFile(io.BytesIO(raw)) as z:\n        assert set(z.namelist())==set(['AirTrackStore.java', 'AircraftOperationsActivity.java',\
+        \ 'upgrade_v1156.py'])\n        assert z.testzip() is None\n        z.extractall(d)\n    subprocess.run([sys.executable,str(d/'upgrade_v1156.py'),sys.argv[1]],check=True)\n\
+        print('PASS V1156 source files installed into existing operations app')\nV1156_INSTALL\n"
+    - name: V1157 INSTALL - native radio and TV playback plus provider image cards
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'V1157_UNPACK'\nimport sys,base64,gzip,hashlib,io,zipfile,pathlib,tempfile,subprocess\n\
+        encoded=\"\"\"\n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\n\"\
+        \"\"\nblob=gzip.decompress(base64.b64decode(''.join(encoded.split()),validate=True))\nassert hashlib.sha256(blob).hexdigest()==\"\
+        9bb5731f06dcfea3a6adee07fc308f30cda191d024c6ece3f5b6c58cc6c8aac6\",'V1157 source payload checksum mismatch'\nwith\
+        \ tempfile.TemporaryDirectory(prefix='v1157_native_media_') as temp:\n    p=pathlib.Path(temp)\n    with zipfile.ZipFile(io.BytesIO(blob))\
+        \ as z:\n        assert z.testzip() is None\n        assert set(z.namelist())=={'MediaDeskActivity.java','upgrade_v1157.py','README.txt'}\n\
+        \        z.extractall(p)\n    subprocess.run([sys.executable,str(p/'upgrade_v1157.py'),sys.argv[1]],check=True)\n\
+        print('PASS: V1157 native stream playback and real source-image cards patch installed')\nV1157_UNPACK\n"
+    - name: V1158 INSTALL - unify original globe renderer with new professional operations and media
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'FUSION_INSTALL'\nimport pathlib,sys,hashlib,zipfile,base64,io,gzip,tempfile,subprocess\n\
+        text=\"\"\"\n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\n\
+        \"\"\"\ndata=gzip.decompress(base64.b64decode(''.join(text.split()),validate=True))\nassert hashlib.sha256(data).hexdigest()==\"\
+        0cbb07877b17086128398659e85dd46e92ab282ec845c4c10597cf71ee75c97d\",'Fusion patch signature mismatch'\nwith tempfile.TemporaryDirectory(prefix='v1158-fusion-')\
+        \ as d:\n    p=pathlib.Path(d)\n    with zipfile.ZipFile(io.BytesIO(data)) as z:\n        assert z.testzip() is None\n\
+        \        assert sorted(z.namelist())==['README.txt','upgrade_v1158.py']\n        z.extractall(p)\n    subprocess.run([sys.executable,str(p/'upgrade_v1158.py'),sys.argv[1]],check=True)\n\
+        print('V1158: Original command globe shared with pro UI, no original files replaced')\nFUSION_INSTALL\n"
+    - name: V1159 INSTALL - real observation panel and interactive globe inspection (new Java)
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'V1159_NATIVE_PATCH'\nimport io,zipfile,base64,hashlib,pathlib,subprocess,sys,tempfile,ast\n\
+        text=\"\"\"\n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\n\
+        iQAAAFsYAAAAAA==\n\"\"\"\ncontent=base64.b64decode(''.join(text.split()),validate=True)\nassert hashlib.sha256(content).hexdigest()=='a123bfd38a0aa18966f0566fb50d101c0243ea113ecfdaf4e7d9a0632a2dff00','V1159\
+        \ patch modified'\nwith tempfile.TemporaryDirectory(prefix='v1159-operations-') as d:\n    wd=pathlib.Path(d)\n  \
+        \  with zipfile.ZipFile(io.BytesIO(content)) as z:\n        assert z.testzip() is None\n        assert sorted(z.namelist())==['OperationsTelemetryPanel.java','upgrade_v1159.py']\n\
+        \        z.extractall(wd)\n    ast.parse((wd/'upgrade_v1159.py').read_text(encoding='utf-8'))\n    subprocess.run([sys.executable,str(wd/'upgrade_v1159.py'),sys.argv[1]],check=True)\n\
+        print('V1159: observable telemetry rows, selected globe detail, source receipt status, and unchanged original renderer')\n\
+        V1159_NATIVE_PATCH"
+    - name: V1159 CORRECTION - original protected native globe is the default and plots real source signals
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'V1159_ORIGINAL_NATIVE_RESTORE'\nimport io,zipfile,base64,hashlib,ast,pathlib,subprocess,sys,tempfile\n\
+        payload=\"\"\"\nUEsDBBQAAAAIANeOYV2kPlakLg0AAN4rAAAYAAAAcmVzdG9yZV9vcmlnaW5hbF8xMTU5LnB51Rr9c+I29nf+CoXOBHvrmE2vveuRsj02ISlTElIg6cx9zI6w\n\
+        BagxlivJEG43//s9SbbxF/na7c2UHxLbkt57et/vSV8dtGPB2zMatkm4RtFWLln4l0az2bw9Pv7u78hjnBNPUhZ2EON0QUMcOCjiTMJX4qMJliQIqCSXOLql\n\
+        ZIOoQGf9897NcOqgkEmEQ8QitR4HSBCPhT7mW7SGqRHj0m1cMRTCsjXhAia56IKzOPQzXGiFIxTRUCAaogUJYxqSYIuAJkLXgN9QCfSsqU84YjNB+BorfMJV\n\
+        u2jMOVuhCMtlQGeIrhRSdA2vjeRZbIWzxEINO/erwCWSE+L2A7IioZzCM8IC9acNQPEbbLmr1lqwyMV8sf7X8X9slxPBgjWx7JMZFqSbTGy3cBS1TgT3uupz\n\
+        uwVP7RUGPv+G17jtsVVbAAYWLtgS8zjE7Q3jgS+ojDX5nLFVq6EWdNXK1igi3OzrEr71QCRrKreuAtY6WQRsRsrzLtRHJZNkksDSTCnLLBlngW/GaxBscBCY\n\
+        wbN4sxoC63+FLxEGZBNgOPVIMnFFfIoTMOrxjIi7EixMuZnQo9zjeC53JJe3xbEfkIR/s5gGvms+uXdSAC4c0jkRsszgXuhzRv3LZNgFsbYamcp2P0adROCu\n\
+        WOJvvvurFYEMsf9htpVEWLbtLsm9Txew1LLRnHEUKeWzgH8O8MhRvHD0Ph3YiqN57xi67IeG6CoaDEBJ7qVFQo/5NFx0W7GcH33fshtYgJJK1Io4BVUlaMZY\n\
+        QJSdJDp/yXzSneNAkJOWwiwqK3YcmxKlqZJvrzEYBpKF133L18AdJDZUestRgnNMQrAfwi37Y2kRnVt5wux968rICOZyeZvaOfZ99ZyBmrLFIiBO+nqNOV6J\n\
+        CgzlGWoU2pJLKuzS3LJWl4ZB2aYce3cTyThxo3gWULG0IrwNGPbLsKqq6wUwlsxq+GQOHiiysDNzNsut3WkgpQXKwzVQAkO4HjgyaWG72z120Lz1EWY+dBC5\n\
+        j4znJPfYk+DKWAguJvSWjDtoAQ7z427lQ6uBRFeAMkUB9ojGd2w3vkIp9zVa0hKIbUJwcjSUoGgAzUdKe2NOwH/7BPzwBh5CyVkgkFwSNKdcAIkeuLfQbait\n\
+        tFotBL9UQ6agudqdl+SFAjD9Meg2i+UJrHFes66RXzEEh475EG9hJFv1U+wb6FkYWMagsRIWgP3k6FW/AgStdbC8q1QnP2J05iQddwWRwEXwwFq3rPxU97Y/\n\
+        ng5Oe0M7v8UXo8ptppvOfRV+tfc1FXRGQb23VQYUea0hh6cB9e6GVEgSgnGuj97tM9vKHr8ENDOMPLWspRT2GoIkxAmCAraBMC1YzD1QTsx94aAZMJOGoIzg\n\
+        xrV6plqdZgnaCc8xlct5HCCfCjCHbaa3ECl3/qXoAJ2yaFzzz7gb6+jY8SPrm+Nv7R0bPhfa8d++z6CpSGA2g1bgdZCIwIqr8oPIpJXg1JjoHpZ/1NNI98D8\n\
+        P6lZpazPMsM/NsejaW86GF0hNLpqdvKv5+dN+wTcupl5eAjcJQuddh0eHhR8vdZWleDEK5XfEAhJRu3dCMdCfXqo6M8zd9NAuV85xhRH1c8nEtPdJpuj8eBi\n\
+        cNUboovh6H0ftVEISEG/cCzZUUqC9oSSxUoVU/fHFaCQ+C4643ixUzeYB0ooCedxJEFcar0LfKpQkqO1r1hx0A3jILAL31warnFAfWCvVQMCaIh5WPz+UHj7\n\
+        srIu87oq+GdIOgOSijzheMZsyWNjoAmvteGPyYrBJJ2mg0V7nErqgT9XiIkQuq4QYGW6xECXN5MpuhpNQSwcYhYg5mgGQVtJhmlZiXgmJOTIMhGbWzam56cr\n\
+        RbVtt9HPhEQaCQTmGGhkhSgLgfrIRExE1vBns4Q/AfOwibmpT8tVIK5GMWdeLCAEw5YN7t0eYE7VG8AG9BI7NXiTCe5TgYqwi1IzbxpgT1qQHa3cAPJY88BC\n\
+        MOASH3boH7NQdHiIChoPEoLwHHqEzSs1YY05V8pGo0w6w+taFQAFVFV7AtlNlyrXYRwybVgsEFbuNo6igEKqNduqLDKc3G0ddDO5mADpWs5GVjBhMJkk8nMr\n\
+        wHOUKaafEuUkqpx08vMWRP4T6jcVD5+Cpx8USy2wH/LE/P1u5UFZbJXP/xcV2uPHHnLqXzIlsMllajDGhOosQf0McqD0NkuALF2z3g4mg/fD/i7NylVNBYKq\n\
+        +UxdBGlWHMKXxZ6kfHvhVL3/F3L3L9v+CrbBdcfmiO6RCHiCAyu19rzZa0u1jedWmdIgCMgCBxNFc//eI7oLBIhTVcj8IRVppyip3DWofRvRPqCr2Wen2Isz\n\
+        69S3hvcXo6sy4x+vWTVm561OA88h5SN7ssCjY3sP7VpLlJ2f7BPL5eisP77KhFKAkquhauR4BTpw20/yIUiI0PW4P+mPb/tnqH8FU/ao+F5xVpzwC0RrrDwT\n\
+        sJLuXKUZ5R29MAzUixu8/y3hdK48feZnbr/5FumaHS0xRAPIH33IO1TdDRlKcCSiJVCW5eY+0akilaaSzlIaEgK0Ukx4if8u6mxu5Z9FYfe4rRpKnq/ik9HN\n\
+        +LSPLnvXzWf6vWai272b6ai8piSOCV0ASmFJdqUH0nfNqFGuO2w/Amd/mH3cBHe2N3qfmN5Zb9rTX5ItXI6Up05NMVPXJJdeqcZPvdutCTQl7QK9Pnk6YNW7\n\
+        gLqKpqhbXCfyVfV6TA0+g8xXxc0nY93toP8rOu8Nhv0zEMFedYMwOsw5TMjdBQ0g7wP5qFpkvnMzcyhKhS50wEel5xM1pYDYVTCs3LtLZG80FfWuB47Jj26m\n\
+        p9orZYcb6oGEygHW9uye6OpWm3VzTYaqyn+oOzXIWcs7VLEf3fXqcY63GsC71FLab96gno+hhmZh/qBmQZjO9OAxYQ8MQb4udHNHMWZ3qMTq40jih9+gKyjA\n\
+        OFINI9gFBx6xFcLJYYKDcASQ7ulKDUZMUMN/QAJmrZJ3H0m6IhBJVpFw0Zt2qR0JmzGieIfKTuR5rEq3nCt7ClCjgEl1DrGHgeoHLLGewINwpwZRYs64q+3s\n\
+        0yfsqr1eUgij4ofu20+fDrRns7BO4bHO321Vr9MwJpU+AazeRqTbrSOlNxgfHh6oDl2P8teB+OWm93M/AfJLjO+IeB2cyXXvNIUzEPuAGPar2Ae6E6i/3Sf2\n\
+        92N+iQsu4eKn6aRTqbGe3GIRDgSCm3Fv2Cl8nPSm/eFwMO1PSkRLrroLMQ+eJLa5lDISnXabQakr7rZHIZEbxu9cxhft5mvIziBq4/9dSciNxUK4C7YGiNnw\n\
+        RuVSYMFUCBfLdrOSnt2Ed6HKq0REwPqUT1tCDFUbg6iieqSxmXCC3qINiwNftYPNwTO4ELqK1DFJWqsL47QxV8cydcyifreZzj5qfm32+XXTPFIZ7J5TyygS\n\
+        nNinyqYsZaNGUBb1Ha01TgIF/pumpJMzJqfC5jMWzyAWXeErJ/eYxw4vxiM6IGYnUYtTDgmriXju9c374eD0g8mbqhiaTaeZ5hvJpA/j/ulofNaE3E+dpLqx\n\
+        pACSBUmfTbhkFckthCzLzudBu9rddChTVpgZD40XRpvEz6edWRUUCK/PbgrFdj7MWPkgWt+NLTbpk+SlJs15NY5K7HO9AL6lqXphBJSmFwTPoPpLdtPUz3qi\n\
+        a2Z/VnZc7VA/yfwN5VknNYv4IgLgutfOym0AnUVNtqGXNYa0p96dWz6ePgmTPplFu9Myd08Lo5bu4sdi3qn9tLCSgOfsYpaThp09qfUfgemx1uzh4eeo0h+r\n\
+        Rg/5gwMjKuNCwG9r+WsuBATK9TmOA9lB3pIxkelRlBwj+vpoEEG6R0zu6DEIEkRqoOpslookPfTNLSRgAqTQkJKO9QlH9dQghJRrZbr25Sr6Wcd+3+pTv3TJ\n\
+        vkOvAaSfUEZQnfuZF31Y7BSu3Oi+hX0CYuMy/WhRfdbW2HHxT0p8dtaiaoMIsvYOOh+MJ1OQXBx6SyU5fSaXlFJFc0+ulIGxg7hNxyfpWEK45Hizywf2Hvvk\n\
+        OJjBTrRNICyTqxGGmGKs+scIqg6u1GhXqegomGoVxD0RQzbl7j6c7I7YTFMEipNge6564taCyISLduE49tEjWH25CKoaaZnLdMUDnD+UxEbNCeKjtDae56Fq\n\
+        D1DVFgdZG2YU9kJqNDwPt8qMOuka1UAxhB5kaGsV7tCsk2uLWu0AWUdV+FSa2l5pnHI7wASdsCaqouaT32NIhVRfwM0uDu1Vu3+HhrLq/aYkvSyPPNplfHzy\n\
+        C9xz3Z2tJ/OZZJHm/gbScGIuugmnetVN355zVBDaaaSrTo6EZXcSrM+/jNftLp1563o8mvZPp/0zlPV1zgfDPjr9qXd10T/roI+RG+IVeWg1+lM3wlwQK70q\n\
+        aDcgfwV1bl33JpNOcnu03IXLmJ27yWpGsiIk36xJxvRBV1vfNminnaUThIMgZ4tzGhCB1NaOwEhDfRTeymga9yfT0bh/1nIUa/UfV1U7FgRd+UHQ/xKnxKvd\n\
+        VcM6dtmN/wFQSwECFAMUAAAACADXjmFdpD5WpC4NAADeKwAAGAAAAAAAAAAAAAAApIEAAAAAcmVzdG9yZV9vcmlnaW5hbF8xMTU5LnB5UEsFBgAAAAABAAEA\n\
+        RgAAAGQNAAAAAA==\n\"\"\"\ncode=base64.b64decode(''.join(payload.split()),validate=True)\nassert hashlib.sha256(code).hexdigest()=='957b91b4b9a7563906d20fbaf27b0828465e1d5439ba8ea35d1b40defbbe379f',\
+        \ 'Original-globe restore source was altered'\nwith tempfile.TemporaryDirectory(prefix='original-v1159-') as d:\n\
+        \  folder=pathlib.Path(d)\n  with zipfile.ZipFile(io.BytesIO(code)) as z:\n    assert z.testzip() is None and z.namelist()==['restore_original_1159.py']\n\
+        \    z.extractall(folder)\n  ast.parse((folder/'restore_original_1159.py').read_text(encoding='utf-8'))\n  subprocess.run([sys.executable,str(folder/'restore_original_1159.py'),sys.argv[1]],check=True)\n\
+        print('PASS V1159 original globe correction: original engine visible FIRST, native Signal adapter, no renamed app')\n\
+        V1159_ORIGINAL_NATIVE_RESTORE"
+    - name: V1159 CORRECTION SOURCE GATE - original globe default with real observed native signals
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'V1159_ORIGINAL_GATE'\nfrom pathlib import Path\nimport sys\n\
+        root=Path(sys.argv[1]);folder=root/'app/src/main/java/com/sentongoharuna/worldsituationroom'\ns=(folder/'OperationsMainActivity.java').read_text()\n\
+        for required in (\n    'SatelliteMapView nativeGlobe=(SatelliteMapView)instance;',\n    'nativeGlobe.setGlobeMode(true);',\n\
+        \    'switchOriginalRenderer();\\n    }',\n    'nativeGlobe.setSignals(toNativeSignals(earthObservations));',\n  \
+        \  'new Signal(id,layer,a.title,a.detail,a.lat,a.lon,',\n    'nativeGlobe.setCenter(item.lat,item.lon,nativeGlobe.getZoom());',\n\
+        \    'earthObservations.clear();earthObservations.addAll(observations);',\n    '((SatelliteMapView)originalEarth).setSignals(toNativeSignals(earthObservations));',\n\
+        \    'nativeGlobe.setGlobeMode(true)',\n):\n  assert required in s, 'Original globe was not really restored: '+required\n\
+        assert 'if(originalMode)switchOriginalRenderer();' not in s, 'Observation selection still throws user to imitation\
+        \ globe'\nfor file in ('SatelliteMapView.java','DuwmLiveWallpaperService.java','MainActivity.java','MediaDeskActivity.java','AircraftOperationsActivity.java'):\n\
+        \  assert (folder/file).stat().st_size>1000, 'Original feature missing: '+file\nprint('PASS original globe DEFAULT,\
+        \ source pins native, touch/zoom original and protected source intact')\nV1159_ORIGINAL_GATE"
+    - name: V1159 BASE RULES - make original globe sources visible and preserve signal continuity
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'V1159_BASE_RULES_PATCH'\nfrom pathlib import Path\nimport hashlib,sys\n\
+        project=Path(sys.argv[1]);folder=project/'app/src/main/java/com/sentongoharuna/worldsituationroom'\ntarget=folder/'OperationsMainActivity.java'\n\
+        protected=[folder/name for name in ('SatelliteMapView.java','DuwmLiveWallpaperService.java','MainActivity.java','MediaDeskActivity.java','AircraftOperationsActivity.java')]\n\
+        baseline={str(f):hashlib.sha256(f.read_bytes()).hexdigest() for f in protected}\ns=target.read_text(encoding='utf-8')\n\
+        def exactly_once(old,new,label):\n    global s\n    count=s.count(old)\n    assert count==1, f'{label}: expected one\
+        \ original anchor, found {count}'\n    s=s.replace(old,new,1)\n# Show genuine per-source status on the ORIGINAL renderer,\
+        \ not just on its hidden substitute.\nexactly_once('originalHud.setVisibility(View.GONE);',\n             'originalHud.setVisibility(View.VISIBLE);',\
+        \ 'original source HUD visibility')\nexactly_once('earthHud.addView(text(\"LIVE EARTH / GLOBAL SIGNALS\",11,TEXT,true));',\n\
+        \             'earthHud.addView(text(\"ORIGINAL GLOBE / OBSERVED SIGNALS\",11,TEXT,true));', 'native HUD heading')\n\
+        # Give the protected globe more first-screen room without discarding the source-backed telemetry panel.\nexactly_once('root.addView(telemetryPanel,new\
+        \ LinearLayout.LayoutParams(-1,dp(178)));',\n             'root.addView(telemetryPanel,new LinearLayout.LayoutParams(-1,dp(166)));','native\
+        \ globe space')\n# Keep observed aircraft stable by their received callsign/source between source refreshes.\n# This\
+        \ changes rendering identity only; the actual coordinates and times remain source-derived.\nexactly_once('String id=\"\
+        observed-\"+a.type+\"-\"+a.title+\"-\"+a.timeMillis;',\n             'String id=\"observed-\"+a.type+\"-\"+a.title+\"\
+        -\"+(a.type==OperationsGlobeView.AIR?a.source:a.timeMillis);', 'source marker continuity')\ntarget.write_text(s,encoding='utf-8')\n\
+        for f in protected:\n    assert hashlib.sha256(f.read_bytes()).hexdigest()==baseline[str(f)], 'original source changed\
+        \ '+f.name\nassert 'nativeGlobe.setGlobeMode(true);' in s and 'nativeGlobe.setSignals(toNativeSignals(earthObservations));'\
+        \ in s\nassert 'originalHud.setVisibility(View.VISIBLE);' in s\nassert 'ORIGINAL GLOBE / OBSERVED SIGNALS' in s\n\
+        print('PASS BASE RULE 1: exact original native globe + truthful observed-source status in first viewport')\nprint('PASS\
+        \ BASE RULE 2: actual extra screen room and stable received aircraft markers; NO version bump')\nV1159_BASE_RULES_PATCH\n"
+    - name: V1159 VISIBLE UPGRADE - native full-screen FOCUS and RESTORE
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'V1159_FOCUS_PATCH'\nfrom pathlib import Path\nimport hashlib,sys\n\
+        root=Path(sys.argv[1]);p=root/'app/src/main/java/com/sentongoharuna/worldsituationroom'\nmain=p/'OperationsMainActivity.java'\n\
+        protected=[p/x for x in ('SatelliteMapView.java','DuwmLiveWallpaperService.java','MainActivity.java','MediaDeskActivity.java','AircraftOperationsActivity.java')]\n\
+        protect={str(x):hashlib.sha256(x.read_bytes()).hexdigest() for x in protected}\ns=main.read_text(encoding='utf-8')\n\
+        def rep(a,b,label):\n    global s\n    n=s.count(a)\n    assert n==1, f'{label} source changed; found {n} exact anchors\
+        \ (refuse silent no-op)'\n    s=s.replace(a,b,1)\n# Real functionality: FOCUS native globe to occupy entire operational\
+        \ screen.\nrep('    private boolean originalMode=false;',\n    '    private boolean originalMode=false;\\n    private\
+        \ boolean fullEarth=false;', 'native focus state')\nrep('        originalToggle.setOnClickListener(v->switchOriginalRenderer());',\n\
+        \    '''        originalToggle.setOnClickListener(v->switchOriginalRenderer());\n        // This control actually\
+        \ reflows the native globe viewport.\n        TextView focusControl=action(\"FOCUS\",\"Expand original native globe\
+        \ full-screen\");\n        rowAdd(globeHeading,focusControl,68,35);''','focus action control')\nrep('root.addView(telemetryPanel,new\
+        \ LinearLayout.LayoutParams(-1,dp(166)));',\n    '''root.addView(telemetryPanel,new LinearLayout.LayoutParams(-1,dp(166)));\n\
+        \        focusControl.setOnClickListener(v->{\n            if(!originalMode || !(originalEarth instanceof SatelliteMapView)){\n\
+        \                detail.setText(\"Original protected native globe not ready; refusing substitute renderer.\");\n \
+        \               return;\n            }\n            fullEarth=!fullEarth;\n            // The preserved native SatelliteMapView\
+        \ grows when the weighted frame remeasures.\n            metadata.setVisibility(fullEarth?View.GONE:View.VISIBLE);\n\
+        \            scroller.setVisibility(fullEarth?View.GONE:View.VISIBLE);\n            telemetryPanel.setVisibility(fullEarth?View.GONE:View.VISIBLE);\n\
+        \            layers.setVisibility(fullEarth?View.GONE:View.VISIBLE);\n            detail.setVisibility(fullEarth?View.GONE:View.VISIBLE);\n\
+        \            focusControl.setText(fullEarth?\"RESTORE\":\"FOCUS\");\n            focusControl.setContentDescription(fullEarth?\"\
+        Restore source panels and tabs\":\"Expand original native globe full-screen\");\n            globeLabel.setText(fullEarth?\"\
+        ORIGINAL EARTH  /  FULL-SCREEN LIVE GLOBE\":\"ORIGINAL GLOBE  /  OBSERVED WORLD POSITIONS\");\n            originalEarth.requestLayout();originalEarth.postInvalidateOnAnimation();\n\
+        \        });''','full-screen actual panel reflow')\nrep('globeLabel=text(\"LIVE EARTH  /  OBSERVED WORLD POSITIONS\"\
+        ,12,TEXT,true);',\n    'globeLabel=text(\"ORIGINAL GLOBE  /  OBSERVED WORLD POSITIONS\",12,TEXT,true);','visible original\
+        \ globe heading')\nmain.write_text(s,encoding='utf-8')\nfor x in protected:\n    assert hashlib.sha256(x.read_bytes()).hexdigest()==protect[str(x)],'Protected\
+        \ original modified: '+x.name\nfor item in ('focusControl.setOnClickListener','metadata.setVisibility(fullEarth?View.GONE:View.VISIBLE)',\n\
+        \             'scroller.setVisibility(fullEarth?View.GONE:View.VISIBLE)',\n             'telemetryPanel.setVisibility(fullEarth?View.GONE:View.VISIBLE)',\n\
+        \             'originalEarth.postInvalidateOnAnimation()','fullEarth=!fullEarth'):\n    assert item in s,'Focus integration\
+        \ absent: '+item\nassert 'nativeGlobe.setGlobeMode(true)' in s\nassert 'nativeGlobe.setSignals(toNativeSignals(earthObservations))'\
+        \ in s\nprint('PASS V1159: original globe native full-screen FOCUS and RESTORE, unchanged protected source, real received\
+        \ observations')\nV1159_FOCUS_PATCH\n"
+    - name: V1159 SOURCE GATE - observed records, source time, original renderer and media retained
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'V1159_SOURCE_CONTRACT'\nfrom pathlib import Path\nimport sys,hashlib\n\
+        p=Path(sys.argv[1]);j=p/'app/src/main/java/com/sentongoharuna/worldsituationroom'\nmain=(j/'OperationsMainActivity.java').read_text()\n\
+        panel=(j/'OperationsTelemetryPanel.java').read_text()\nglobe=(j/'OperationsGlobeView.java').read_text()\nfor word\
+        \ in ('new OperationsTelemetryPanel(this)','telemetryPanel.update(observations','inspectObservation(item,true)','switchOriginalRenderer','AirTrackStore.publish(payload)','MediaDeskActivity.class'):\n\
+        \    assert word in main,'New or preserved function missing: '+word\nfor word in ('OBSERVED SIGNALS','LAST CHECK','OnSelect','setOnClickListener','getTimeZone(\"\
+        UTC\")','NO OBSERVED MAP RECORDS'):\n    assert word in panel,'Missing source-truth operational feature: '+word\n\
+        assert 'new OperationsGlobeView(this)' in main and 'naturalearth_coasts.txt' in globe\nassert 'FRAMES ' in globe and\
+        \ 'postInvalidateDelayed(33)' in globe\nfor x in ('DuwmLiveWallpaperService.java','SatelliteMapView.java','MediaDeskActivity.java','AircraftOperationsActivity.java'):\n\
+        \    assert (j/x).is_file(), 'Prior working component absent: '+x\nprint('PASS V1159 genuine new native observation\
+        \ board, maintained original globe and media engine')\nV1159_SOURCE_CONTRACT"
+    - name: V1159.1 - set Android versionName and increasing integer versionCode
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - "$PROJECT_DIR" <<'PY_V1159_1_LABEL'
+        from pathlib import Path
+        import re, sys
+        file=Path(sys.argv[1])/'app/build.gradle.kts'
+        original=file.read_text(encoding='utf-8')
+        code_pattern=r'(?m)^(\s*versionCode\s*=\s*)1159(\s*)$'
+        name_pattern=r'(?m)^(\s*versionName\s*=\s*)"RUNNINGBALL2-V1159-LIVE-OBSERVATION-DESK"(\s*)$'
+        updated,ncode=re.subn(code_pattern,r'\g<1>11591\g<2>',original)
+        updated,nname=re.subn(name_pattern,r'\g<1>"RUNNINGBALL2-V1159.1-LIVE-OBSERVATION-DESK"\g<2>',updated)
+        assert ncode == 1 and nname == 1, ('Version label source not as expected',ncode,nname)
+        assert 'versionCode = 11591' in updated and 'versionName = "RUNNINGBALL2-V1159.1-LIVE-OBSERVATION-DESK"' in updated
+        file.write_text(updated,encoding='utf-8')
+        strings=Path(sys.argv[1])/'app/src/main/res/values/strings.xml'
+        original_strings=strings.read_text(encoding='utf-8')
+        new_strings,updated_count=re.subn(r'(<string\s+name="app_name">)DEVELOP\.UGANDA V1159(</string>)',r'\g<1>DEVELOP.UGANDA V1159.1\g<2>',original_strings,count=1)
+        assert updated_count==1, 'Expected V1159 launcher label was not found'
+        strings.write_text(new_strings,encoding='utf-8')
+        print('PASS: Android application versionName is V1159.1, versionCode 11591, applicationId unchanged')
+        PY_V1159_1_LABEL
+    - name: Compile the complete preserved native Android APK
+      shell: bash
+      run: 'set -euo pipefail
+
+        cd "$PROJECT_DIR"
+
+        gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+
+        '
+    - name: V1159 Verify Android package and fused original+modern globe
+      shell: bash
+      run: "set -euo pipefail\npython3 - <<'PY_V110_APK'\nimport os\nimport pathlib\nimport hashlib\nimport zipfile\nimport\
+        \ subprocess\nproject = pathlib.Path(os.environ['PROJECT_DIR'])\napks = list((project / 'app/build/outputs/apk/debug').glob('*.apk'))\n\
+        assert len(apks) == 1, 'Expected precisely one compiled APK'\napk = apks[0]\nassert apk.stat().st_size > 20000, 'APK\
+        \ empty or unexpectedly small'\nwith zipfile.ZipFile(apk) as z:\n    assert z.testzip() is None, 'Broken APK zip'\n\
+        \    names = z.namelist()\n    assert 'classes.dex' in names, 'Compiled Java missing'\n    assert 'AndroidManifest.xml'\
+        \ in names, 'Android manifest missing'\n    assert 'assets/develop_uganda_logo.png' in names, 'Official logo missing\
+        \ from APK'\n    assert any(n.endswith('/develop_uganda_logo.png') for n in names), 'Launcher drawable missing'\n\
+        \    digest = hashlib.sha256(z.read('assets/develop_uganda_logo.png')).hexdigest()\n    assert digest == 'e583513eda20b22ee9a9641c58a2b58869fd9997a94ae49c1321c378aa32d97b',\
+        \ 'Wrong official logo'\nsdk = pathlib.Path(os.environ.get('ANDROID_HOME') or os.environ['ANDROID_SDK_ROOT'])\nbt\
+        \ = sdk / 'build-tools/36.0.0'\nsubprocess.run([str(bt / 'apksigner'), 'verify', str(apk)], check=True)\nbadge = subprocess.check_output([str(bt\
+        \ / 'aapt'), 'dump', 'badging', str(apk)], text=True)\nassert \"name='com.sentongoharuna.worldsituationroom.rb2live25'\"\
+        \ in badge, 'Original installation identity lost'\nassert \"versionCode='11591'\" in badge, 'V1159 versionCode missing'\n\
+        assert \"RUNNINGBALL2-V1159.1-LIVE-OBSERVATION-DESK\" in badge, 'V1159 native media versionName missing'\ntarget = pathlib.Path(os.environ['RUNNER_TEMP'])\
+        \ / 'release'\ntarget.mkdir(parents=True, exist_ok=True)\noutput = target / 'RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk'\n\
+        output.write_bytes(apk.read_bytes())\nprint('PASS V1159 signed debug APK', output, output.stat().st_size, flush=True)\n\
+        PY_V110_APK\n"
+    - name: V1154 Reject an APK without actual new compiled source explorer + ISS
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$RUNNER_TEMP/release/RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk\" <<'VERIFY_V1154_NATIVE'\n\
+        import hashlib,sys,zipfile\nwith zipfile.ZipFile(sys.argv[1]) as z:\n    dex=[z.read(n) for n in z.namelist() if n.endswith('.dex')]\n\
+        \    assert dex, 'No compiled program code'\n    for symbol in (b'AirTrackStore',b'AircraftOperationsActivity',b'SatelliteMapView',b'switchOriginalRenderer',b'ORIGINAL\
+        \ GLOBE',b'LIVE EARTH / GLOBAL SIGNALS',b'OperationsMainActivity',b'OperationsGlobeView',b'WorldSourceHubActivity',b'LiveCommandActivity',b'LiveEarthGlobeView',b'api.wheretheiss.at',b'celestrak.org',b'iptv-org.github.io',b'radio-browser.info',b'stat.ripe.net',b'opensky-network.org'):\n\
+        \        assert any(symbol in data for data in dex), 'Native world module absent from DEX: '+symbol.decode()\n   \
+        \ print('PASS V1157: compiled APK contains native searchable aircraft records, operation inspector, real source cache\
+        \ and globe selection')\n    print('DEX SHA256:',[hashlib.sha256(d).hexdigest() for d in dex])\nVERIFY_V1154_NATIVE\n"
+    - name: V1159 STRICT GATE - new DEX must contain operational observation board, prior globe and native media
+      shell: bash
+      run: "set -euo pipefail\nmkdir -p \"$RUNNER_TEMP/v1156-baseline-apk\"\nGH_TOKEN=\"${{ github.token }}\" gh release download\
+        \ v1156 --repo \"$GITHUB_REPOSITORY\" --pattern 'RUNNINGBALL2-V1156-DEVELOP-UGANDA.apk' --dir \"$RUNNER_TEMP/v1156-baseline-apk\"\
+        \ --clobber\npython3 - \"$RUNNER_TEMP/v1156-baseline-apk/RUNNINGBALL2-V1156-DEVELOP-UGANDA.apk\" \"$RUNNER_TEMP/release/RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk\"\
+        \ <<'V1159_SOURCE_DIFF'\nimport hashlib,sys,zipfile\nold,new=sys.argv[1:]\nwith zipfile.ZipFile(old) as z:\n  old_code=b''.join(z.read(n)\
+        \ for n in sorted(z.namelist()) if n.startswith('classes') and n.endswith('.dex'))\nwith zipfile.ZipFile(new) as z:\n\
+        \  new_code=b''.join(z.read(n) for n in sorted(z.namelist()) if n.startswith('classes') and n.endswith('.dex'))\n\
+        assert old_code and new_code,'Missing compiled Android DEX'\nassert hashlib.sha256(old_code).digest()!=hashlib.sha256(new_code).digest(),'V1159\
+        \ is the same compiled program as V1156'\nfor token in (b'OperationsTelemetryPanel',b'OBSERVED SIGNALS',b'SatelliteMapView',b'switchOriginalRenderer',b'MediaDeskActivity',b'MediaPlayer',b'VideoView',b'api/logos.json',b'api/streams.json',b'epic.gsfc.nasa.gov'):\n\
+        \  assert token in new_code,'Required new native media feature absent: '+token.decode()\nprint('PASS V1157: compiled\
+        \ DEX changed, native streaming player and source image routes present')\nprint('V1156 DEX SHA256',hashlib.sha256(old_code).hexdigest())\n\
+        print('V1157 DEX SHA256',hashlib.sha256(new_code).hexdigest())\nV1159_SOURCE_DIFF\n"
+    - name: Upload compiled V1159 APK before emulator checks
+      uses: actions/upload-artifact@v4
+      with:
+        name: RUNNINGBALL2-V1159.1-APK-COMPILED
+        path: ${{ runner.temp }}/release/RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk
+        if-no-files-found: error
+        retention-days: 30
+    - name: Grant Android emulator KVM access
+      shell: bash
+      run: 'echo ''KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"'' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+
+        sudo udevadm control --reload-rules
+
+        sudo udevadm trigger --name-match=kvm
+
+        '
+    - name: V1159 Screenshot tool installation for real motion gate
+      shell: bash
+      run: 'set -euo pipefail
+
+        python3 -m pip install --no-cache-dir ''Pillow==11.3.0''
+
+        python3 -c ''from PIL import Image,ImageChops,ImageStat; print("PASS screenshot test dependencies")''
+
+        '
+    - name: V1159 PREPARE - real on-screen globe motion, observation board, native flight register
+      shell: bash
+      run: "set -euo pipefail\ncat > \"$RUNNER_TEMP/v1159-screen-test.sh\" <<'V1159_TEST_SCRIPT'\n#!/usr/bin/env bash\nset\
+        \ -euo pipefail\nAPK=\"$RUNNER_TEMP/release/RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk\"\ntest -s \"$APK\"\nadb install\
+        \ -r \"$APK\"\nPKG=\"com.sentongoharuna.worldsituationroom.rb2live25\"\nadb shell am force-stop \"$PKG\" || true\n\
+        adb shell am start -n \"$PKG/com.sentongoharuna.worldsituationroom.OperationsMainActivity\"\nsleep 6\nadb exec-out\
+        \ screencap -p > /tmp/V1159_GLOBE_FRAME_1.png\nsleep 3\nadb exec-out screencap -p > /tmp/V1159_GLOBE_FRAME_2.png\n\
+        adb shell uiautomator dump /sdcard/v1159-ui.xml >/dev/null\nadb shell cat /sdcard/v1159-ui.xml > /tmp/V1159_MAIN.xml\n\
+        python3 - <<'V1159_REAL_DEVICE'\nfrom pathlib import Path\nfrom xml.etree import ElementTree as ET\nfrom PIL import\
+        \ Image,ImageChops,ImageStat\nimport subprocess, re,time\nxml=Path('/tmp/V1159_MAIN.xml').read_text()\nroot=ET.fromstring(xml)\n\
+        texts=' '.join((n.get('text','')+' '+n.get('content-desc','')) for n in root.iter('node'))\nfor required in ('OBSERVED\
+        \ SIGNALS','AIRCRAFT','NATIVE AUTO','SOURCE MAP','FOCUS','ORIGINAL GLOBE / OBSERVED SIGNALS'):\n    assert required\
+        \ in texts,'Missing actual main-screen function: '+required\nx=Image.open('/tmp/V1159_GLOBE_FRAME_1.png').convert('RGB')\n\
+        y=Image.open('/tmp/V1159_GLOBE_FRAME_2.png').convert('RGB')\nassert x.size==y.size\n# Restrict to the upper globe.\
+        \ Ignore clocks, scrolling logs, and status bars.\nbox=(int(x.width*.18),int(x.height*.25),int(x.width*.82),int(x.height*.66))\n\
+        score=sum(ImageStat.Stat(ImageChops.difference(x.crop(box),y.crop(box))).mean)/3\nprint('EARTH FRAME DIFFERENCE',score,flush=True)\n\
+        assert score>0.20,'Original main Earth globe is static, refusing release'\nfrom PIL import ImageStat\npixels=ImageChops.difference(x.crop(box),y.crop(box)).convert('L')\n\
+        activity=sum(1 for level in pixels.getdata() if level>10)/float(pixels.width*pixels.height)\nprint('ORIGINAL GLOBE\
+        \ MOVING PIXELS',round(activity,5),flush=True)\nassert activity>0.006,'Only status text moved; protected original\
+        \ globe did not visibly rotate'\n# Exercise original renderer's own gesture, not a new imitation pan handler.\nw,h=x.size\n\
+        subprocess.run(['adb','shell','input','swipe',str(w//2-90),str(h//2),str(w//2+90),str(h//2+28),'420'],check=True,timeout=20)\n\
+        time.sleep(1)\nsubprocess.run(['adb','exec-out','screencap','-p'],stdout=open('/tmp/V1159_ORIGINAL_GESTURE.png','wb'),check=True,timeout=20)\n\
+        z=Image.open('/tmp/V1159_ORIGINAL_GESTURE.png').convert('RGB')\ngesture_score=sum(ImageStat.Stat(ImageChops.difference(y.crop(box),z.crop(box))).mean)/3\n\
+        print('ORIGINAL GLOBE TOUCH REDRAW',gesture_score,flush=True)\nassert gesture_score>0.2,'Native globe did not visibly\
+        \ respond to touch gesture'\n# Exercise visible FOCUS and RESTORE with Android screenshots, rather than only checking\
+        \ Java strings.\nfocus=[n for n in root.iter('node') if 'Expand original native globe full-screen' in n.get('content-desc','')]\n\
+        assert len(focus)==1,'V1159 FOCUS action not visible on real Android emulator'\nfm=re.fullmatch(r'\\[(\\d+),(\\d+)\\\
+        ]\\[(\\d+),(\\d+)\\]',focus[0].get('bounds',''))\nassert fm,'FOCUS is not tappable'\nfa,fb,fc,fd=map(int,fm.groups())\n\
+        subprocess.run(['adb','shell','input','tap',str((fa+fc)//2),str((fb+fd)//2)],check=True,timeout=20)\ntime.sleep(1.2)\n\
+        subprocess.run(['adb','exec-out','screencap','-p'],stdout=open('/tmp/V1159_FOCUS_EXPANDED.png','wb'),check=True,timeout=20)\n\
+        subprocess.run(['adb','shell','uiautomator','dump','/sdcard/v1159-focus.xml'],check=True,stdout=subprocess.DEVNULL,timeout=30)\n\
+        subprocess.run(['adb','shell','cat','/sdcard/v1159-focus.xml'],stdout=open('/tmp/V1159_FOCUS.xml','wb'),check=True,timeout=20)\n\
+        fx=Path('/tmp/V1159_FOCUS.xml').read_text()\nassert 'Restore source panels and tabs' in fx,'FOCUS did not switch layout'\n\
+        expanded=Image.open('/tmp/V1159_FOCUS_EXPANDED.png').convert('RGB')\nchange=sum(ImageStat.Stat(ImageChops.difference(z,expanded)).mean)/3\n\
+        print('VISIBLE FOCUS SCREEN CHANGE',round(change,2),flush=True)\nassert change>1.0,'FOCUS produced no visible screen\
+        \ change'\nroot2=ET.fromstring(fx)\nrestore=[n for n in root2.iter('node') if 'Restore source panels and tabs' in\
+        \ n.get('content-desc','')]\nassert len(restore)==1,'RESTORE action missing'\nrm=re.fullmatch(r'\\[(\\d+),(\\d+)\\\
+        ]\\[(\\d+),(\\d+)\\]',restore[0].get('bounds',''))\nassert rm,'RESTORE not tappable'\nra,rb,rc,rd=map(int,rm.groups())\n\
+        subprocess.run(['adb','shell','input','tap',str((ra+rc)//2),str((rb+rd)//2)],check=True,timeout=20)\ntime.sleep(0.8)\n\
+        \n# Navigate by an actual visible tappable control; a source string by itself is not proof.\ndef find_accessible(node):\n\
+        \    desc=node.get('content-desc','')\n    return 'Open AIRCRAFT monitoring sources' in desc\nfound=[n for n in root.iter('node')\
+        \ if find_accessible(n)]\nassert found,'Air operations tab missing from actual device UI'\nm=re.fullmatch(r'\\[(\\\
+        d+),(\\d+)\\]\\[(\\d+),(\\d+)\\]',found[0].get('bounds',''))\nassert m,'Aircraft tab has no visible bounds'\na,b,c,d=map(int,m.groups());assert\
+        \ c>a and d>b\nsubprocess.run(['adb','shell','input','tap',str((a+c)//2),str((b+d)//2)],check=True,timeout=20)\ntime.sleep(2.0)\n\
+        state=subprocess.run(['adb','shell','dumpsys','activity','activities'],capture_output=True,text=True,check=True,timeout=25).stdout\n\
+        assert 'AircraftOperationsActivity' in state,'Tapping Aircraft did not open the native flight register'\nsubprocess.run(['adb','exec-out','screencap','-p'],stdout=open('/tmp/V1159_AIRCRAFT_REGISTER.png','wb'),check=True,timeout=20)\n\
+        print('PASS V1159 actual rotating globe + visible source receipts + native aircraft navigation')\nV1159_REAL_DEVICE\n\
+        V1159_TEST_SCRIPT\nbash -n \"$RUNNER_TEMP/v1159-screen-test.sh\"\npython3 -m pip install --no-cache-dir 'Pillow==11.3.0'\n"
+    - name: V1159 EMULATOR - observed globe animation and live-operations interface
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: 34
+        target: google_apis
+        arch: x86_64
+        profile: pixel_6
+        cores: 4
+        ram-size: 4096M
+        disable-animations: true
+        emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+        script: bash "$RUNNER_TEMP/v1159-screen-test.sh"
+    - name: Upload real Android screen evidence for V1159 globe movement and navigation
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: RUNNINGBALL2-V1159.1-ANDROID-EVIDENCE
+        path: '/tmp/V1159_GLOBE_FRAME_1.png
+
+          /tmp/V1159_GLOBE_FRAME_2.png
+
+          /tmp/V1159_MAIN.xml
+
+          /tmp/V1159_AIRCRAFT_REGISTER.png
+
+          /tmp/V1159_ORIGINAL_GESTURE.png
+
+          /tmp/V1159_FOCUS_EXPANDED.png
+
+          /tmp/V1159_FOCUS.xml'
+        if-no-files-found: warn
+        retention-days: 30
+    - name: Publish V1159 direct APK only after observed real-screen globe and aircraft tests pass
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: "set -euo pipefail\nAPK=\"$RUNNER_TEMP/release/RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk\"\ntest -s \"$APK\" || { echo\
+        \ \"::error::Compiled V1159 APK is missing\"; exit 1; }\ntest -s /tmp/V1159_FOCUS_EXPANDED.png || { echo \"::error::No\
+        \ visible FOCUS screenshot; refusing APK publication\"; exit 1; }\ngh --version\n# GitHub Artifacts are always ZIP\
+        \ downloads. Release assets retain .apk extension.\nif gh release view \"v1159.1\" --repo \"$GITHUB_REPOSITORY\" >/dev/null\
+        \ 2>&1; then\n  gh release upload \"v1159.1\" \"$APK\" --repo \"$GITHUB_REPOSITORY\" --clobber\nelse\n  gh release create\
+        \ \"v1159.1\" \"$APK\" \\\n    --repo \"$GITHUB_REPOSITORY\" \\\n    --target \"$GITHUB_SHA\" \\\n    --title \"RUNNINGBALL2\
+        \ V1159.1 | ORIGINAL GLOBE CORRECTED\" \\\n    --notes \"V1159 correction makes protected original SatelliteMapView\
+        \ the DEFAULT first-screen rotating globe, uses its native sphere/touch/zoom engine and plots only actual OpenSky/USGS/ISS\
+        \ records via native Signal API. Emulator screenshot and gesture tests must pass before release. Preserves original\
+        \ globe, aircraft register, native radio/TV, image cards and wallpaper. Data reception on phone depends on public\
+        \ source availability; no simulated observations.\" \\\n    --latest=false\nfi\necho '## V1159 Direct APK (not ZIP)'\
+        \ >> \"$GITHUB_STEP_SUMMARY\"\necho \"https://github.com/$GITHUB_REPOSITORY/releases/download/v1159.1/RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk\"\
+        \ >> \"$GITHUB_STEP_SUMMARY\"\ngh release view v1159.1 --repo \"$GITHUB_REPOSITORY\" --json assets --jq '.assets[] |\
+        \ select(.name==\"RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk\") | .name + \" \" + (.size|tostring)' | tee /tmp/V1159_RELEASE_ASSET.txt\n\
+        test -s /tmp/V1159_RELEASE_ASSET.txt || { echo \"::error::Release asset not visible\"; exit 1; }\n"
+    - name: Verify identical signed V1159 release APK
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: "set -euo pipefail\nAPK=\"$RUNNER_TEMP/release/RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk\"\nRELEASE_DIR=\"$RUNNER_TEMP/verified-direct-release\"\
+        \nmkdir -p \"$RELEASE_DIR\"\ngh release download v1159.1 --repo \"$GITHUB_REPOSITORY\" --pattern 'RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk'\
+        \ --dir \"$RELEASE_DIR\" --clobber\nPUBLIC_APK=\"$RELEASE_DIR/RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk\"\ntest -s \"\
+        $PUBLIC_APK\"\ncmp \"$APK\" \"$PUBLIC_APK\" || { echo '::error::Published APK differs from the verified built APK';\
+        \ exit 1; }\npython3 - \"$PUBLIC_APK\" <<'PY_V1159_DIRECT_APK'\nimport pathlib,sys,zipfile\np=pathlib.Path(sys.argv[1]);\
+        \ assert p.suffix=='.apk' and p.stat().st_size>20000\nwith zipfile.ZipFile(p) as z:\n    assert z.testzip() is None\n\
+        \    for f in ('AndroidManifest.xml','classes.dex','assets/develop_uganda_logo.png'):\n        assert f in z.namelist(),\
+        \ f\nprint('PASS: GitHub Releases provides identical, signed Android .apk file; ZIP extraction unnecessary')\nPY_V1159_DIRECT_APK\n\
+        SDK=\"${ANDROID_HOME:-$ANDROID_SDK_ROOT}\"\n\"$SDK/build-tools/36.0.0/apksigner\" verify \"$PUBLIC_APK\"\necho '##\
+        \ V1159 Direct APK VERIFIED' >> \"$GITHUB_STEP_SUMMARY\"\necho \"https://github.com/$GITHUB_REPOSITORY/releases/download/v1159.1/RUNNINGBALL2-V1159.1-DEVELOP-UGANDA.apk\"\
+        \ >> \"$GITHUB_STEP_SUMMARY\"\n"
+    - name: V1154 provider connectivity audit (not proof of Android runtime feed reception)
+      shell: bash
+      run: "set -euo pipefail\nmkdir -p \"$RUNNER_TEMP/evidence\"\npython3 - \"$RUNNER_TEMP/evidence/v1154_provider_probe.json\"\
+        \ <<'V1154_PROVIDER'\nimport datetime,json,sys,urllib.request,urllib.error\nrows={\n  'opensky_aircraft':'https://opensky-network.org/api/states/all',\n\
+        \  'iss_observation':'https://api.wheretheiss.at/v1/satellites/25544',\n  'celestrak_orbits':'https://celestrak.org/NORAD/elements/gp.php?GROUP=STATIONS&FORMAT=JSON',\n\
+        \  'bbc_world_rss':'https://feeds.bbci.co.uk/news/world/rss.xml',\n  'radio_browser':'https://de1.api.radio-browser.info/json/stations/search?limit=2',\n\
+        \  'iptv_directory':'https://iptv-org.github.io/api/channels.json',\n  'ripe_internet_asn':'https://stat.ripe.net/data/country-resource-list/data.json?resource=UG',\n\
+        }\nout={'at_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(), 'note':'CI server HTTP probes only; device\
+        \ UI not inferred', 'sources':{}}\nfor name,url in rows.items():\n    try:\n        r=urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'DEVELOP-UGANDA/1154\
+        \ integration-audit'}),timeout=7)\n        with r: b=r.read(8192)\n        out['sources'][name]={'http_status':r.status,'nonempty':bool(b),'sample_bytes':len(b)}\n\
+        \    except Exception as e:\n        out['sources'][name]={'status':'UNAVAILABLE','error':str(e)[:160]}\nout['sources']['ais_vessels']={'status':'KEY_AND_BACKEND_REQUIRED','docs':'https://www.aisstream.io/documentation'}\n\
+        out['sources']['city_cameras']={'status':'PUBLIC_DIRECTORY_LINKS','api_key_required_for_embedding':True}\nout['sources']['cloudflare_traffic']={'status':'API_KEY_REQUIRED','routing_statistics':'RIPEstat\
+        \ is not live packet traffic'}\nopen(sys.argv[1],'w').write(json.dumps(out,indent=2))\nprint(json.dumps(out,indent=2))\n\
+        V1154_PROVIDER\n"
+    - name: Upload provider truth audit
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: RUNNINGBALL2-V1159.1-SOURCE-TRUTH
+        path: ${{ runner.temp }}/evidence/v1154_provider_probe.json
+        if-no-files-found: ignore
+    - name: Display preserved-feature evidence
+      if: always()
+      shell: bash
+      run: "if [ -f /tmp/V1152_INHERITED_AUDIT.txt ]; then\n  echo '## V1154: inherited source-step audit' >> \"$GITHUB_STEP_SUMMARY\"\
+        \n  echo 'The audit lists original V109 generation steps executed before compiling the V1153 APK.' >> \"$GITHUB_STEP_SUMMARY\"\
+        \n  printf 'Source steps: '; grep -c '^EXECUTED:' /tmp/V1152_INHERITED_AUDIT.txt || true\n  tail -n 8 /tmp/V1152_INHERITED_AUDIT.txt\n\
+        fi\n"
+    - name: Upload inherited-feature audit
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: RUNNINGBALL2-V1159.1-INHERITED-AUDIT
+        path: /tmp/V1152_INHERITED_AUDIT.txt
+        if-no-files-found: ignore
+'on':
+  workflow_dispatch: null
+  push:
+    branches:
+    - main
+    paths:
+    - .github/workflows/RUNNINGBALL2_V1159.1_TWO_BASE_RULES_UPGRADE.yml
