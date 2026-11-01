@@ -1,0 +1,498 @@
+name: RUNNINGBALL2 V1153 - ACTIVE WORLD LIVE GLOBE AND REAL DATA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/RUNNINGBALL2_V1153_ACTIVE_WORLD.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout DUWM exact inherited source workflow
+        uses: actions/checkout@v4
+      - name: Checkout original protected RUNNINGBALL2 source
+        uses: actions/checkout@v4
+        with:
+          repository: Sentongoharuna/Du-World-Situation-Room-
+          ref: 7d952dd607cdeec94832896023c10203425a3b7f
+          path: rb2-original-source
+          persist-credentials: false
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Install source reader
+        shell: bash
+        run: python3 -m pip install --no-cache-dir 'PyYAML==6.0.3'
+      - name: Rebuild full V109 native app, preserve V24 onward, install exact DEVELOP.UGANDA logo
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_V110_BUILD'
+          import os
+          import pathlib
+          import subprocess
+          import yaml
+          import hashlib
+          import tempfile
+
+          base = pathlib.Path('.github/workflows/RUNNINGBALL2_V109.yml')
+          branding = pathlib.Path('.github/workflows/V110_FIX2_DIRECT_PHONE_UPLOAD.yml')
+          assert base.is_file(), 'Required existing V109 source missing'
+          assert branding.is_file(), 'Existing V1152 official-logo source missing'
+          assert base.stat().st_size < 500000, 'V109 source file changed or exceeds safe size'
+          base_steps = yaml.safe_load(base.read_text(encoding='utf-8'))['jobs']['build']['steps']
+          brand_steps = yaml.safe_load(branding.read_text(encoding='utf-8'))['jobs']['build']['steps']
+          assert len(base_steps) == 97, 'V109 source chain changed; refuse reduced app'
+          assert len(brand_steps) == 14, 'V110 source logo chain changed'
+          assert base_steps[6]['name'].startswith('Verify and unpack complete V24')
+          assert base_steps[7]['name'].startswith('Execute EVERY V24')
+          assert base_steps[62]['name'].startswith('V108 INSTALL')
+          assert brand_steps[7]['name'].startswith('V110 install supplied DEVELOP.UGANDA logo')
+          env = os.environ.copy()
+          workspace = pathlib.Path(env['GITHUB_WORKSPACE'])
+          marker = pathlib.Path(env['GITHUB_ENV'])
+          audit = []
+
+          def execute(script, label):
+              assert (chr(36) + chr(123) + chr(123)) not in script, 'Unevaluated Actions expression in ' + label
+              # Linux limits a single argv string to 128 KiB; the V109 V24-restore step is ~179 KiB.
+              # Preserve exact source bytes but run Bash against a temporary script FILE, never bash -c SCRIPT.
+              descriptor, script_path = tempfile.mkstemp(prefix='v1152-inherited-', suffix='.sh')
+              path = pathlib.Path(script_path)
+              try:
+                  with os.fdopen(descriptor, 'w', encoding='utf-8') as fh:
+                      fh.write(script)
+                  result = subprocess.run(['bash', '-e', '-o', 'pipefail', str(path)],
+                                          cwd=workspace, env=env, check=False)
+              finally:
+                  path.unlink(missing_ok=True)
+              if result.returncode:
+                  raise SystemExit('FAILED inherited ' + label + ' exit=' + str(result.returncode))
+              if marker.exists():
+                  for line in marker.read_text(encoding='utf-8').splitlines():
+                      if '=' in line:
+                          key, value = line.split('=', 1)
+                          if key.isidentifier():
+                              env[key] = value
+
+          for index in range(6, 67):
+              step = base_steps[index]
+              label = 'V109 step ' + str(index + 1) + ': ' + step['name']
+              if 'uses' in step:
+                  assert index in (36, 38, 61, 66), label
+                  assert step['uses'] == 'actions/upload-artifact@v4', label
+                  audit.append('DEFERRED evidence upload: ' + label)
+              else:
+                  print('EXECUTING', label, flush=True)
+                  original = step['run']
+                  if index == 7:
+                      # The V24 dispatcher inherited from V109 also invokes Bash using -c
+                      # for potentially large source-generating step strings. Patch only
+                      # its invocation mechanism; DO NOT change the embedded source steps.
+                      # Replace the TWO original V24 dispatcher lines atomically.
+                      # All injected lines retain the same Python block indentation.
+                      # Neither nested V24 source scripts nor upstream code are edited.
+                      anchor = ("  cmd=['bash','-eo','pipefail','-c',item['run']]\n"
+                                "  child=subprocess.run(cmd,cwd=str(cwd),env=env,check=False)")
+                      assert original.count(anchor) == 1, 'V109 V24 dispatcher anchor unexpectedly changed'
+                      replacement = (
+                          "  script_file=pathlib.Path('/tmp/v1152-v24-step-%02d.sh'%index)\n"
+                          "  script_file.write_text(item['run'],encoding='utf-8')\n"
+                          "  try:\n"
+                          "    child=subprocess.run(['bash','-eo','pipefail',str(script_file)],cwd=str(cwd),env=env,check=False)\n"
+                          "  finally:\n"
+                          "    script_file.unlink(missing_ok=True)"
+                      )
+                      original = original.replace(anchor, replacement, 1)
+                      # Parse the ACTUAL inherited dispatcher before executing it.
+                      # This detects the FIX1 IndentationError without another failed GitHub build.
+                      delimiter = "python3 - <<'RB25_V24_RUN'\n"
+                      assert original.count(delimiter) == 1, 'V24 Python heredoc not found'
+                      body = original.split(delimiter, 1)[1].split('\nRB25_V24_RUN', 1)[0]
+                      import ast
+                      ast.parse(body, filename='V1152_FIX2_V24_DISPATCHER.py')
+                      assert "  cmd=['bash','-eo','pipefail','-c',item['run']]" not in original
+                      assert original.count("child=subprocess.run(['bash','-eo','pipefail',str(script_file)]") == 1
+                      print('PASS FIX2 V24 Python AST, preserved source and Bash-file execution',flush=True)
+                  execute(original, label)
+                  audit.append('EXECUTED: ' + label)
+
+          project = pathlib.Path(env.get('PROJECT_DIR', ''))
+          assert project.is_dir() and (project / 'app/build.gradle.kts').is_file(), 'Native V109 app not recovered'
+          print('EXECUTING official V110 logo installer', flush=True)
+          execute(brand_steps[7]['run'], 'original V110 branded image installed into V1152')
+          # V1152 is the version to install; preserve the original Android appId so updates are possible.
+          gradle = project / 'app/build.gradle.kts'
+          definition = gradle.read_text(encoding='utf-8')
+          if definition.count('versionCode = 111') != 1:
+              raise SystemExit('V1152 requires completed original V110 branding/version chain')
+          definition = definition.replace('versionCode = 111','versionCode = 1152',1)
+          old_name = 'versionName = "RUNNINGBALL2-V110-DEVELOP-UGANDA-OFFICIAL-LOGO"'
+          if definition.count(old_name) != 1:
+              raise SystemExit('V1152 inherited branding version missing')
+          definition = definition.replace(old_name,'versionName = "RUNNINGBALL2-V1152-DEVELOP-UGANDA"',1)
+          assert definition.count('applicationId = "com.sentongoharuna.worldsituationroom.rb2live25"') == 1
+          gradle.write_text(definition, encoding='utf-8')
+          app_strings = project / 'app/src/main/res/values/strings.xml'
+          st = app_strings.read_text(encoding='utf-8')
+          if st.count('DEVELOP.UGANDA V110') != 1:
+              raise SystemExit('V1152 app label anchor missing')
+          app_strings.write_text(st.replace('DEVELOP.UGANDA V110','DEVELOP.UGANDA V1152',1),encoding='utf-8')
+          audit.append('V1152 versionCode 1152, versionName V1152, app label V1152, preserved package identity')
+          logo = project / 'app/src/main/assets/develop_uganda_logo.png' 
+          assert logo.is_file(), 'DEVELOP.UGANDA logo asset missing from app source'
+          assert hashlib.sha256(logo.read_bytes()).hexdigest() == 'e583513eda20b22ee9a9641c58a2b58869fd9997a94ae49c1321c378aa32d97b', 'Logo changed'
+          audit.append('EXECUTED official image and launcher resource')
+          pathlib.Path('/tmp/V1152_INHERITED_AUDIT.txt').write_text('\n'.join(audit) + '\n')
+          with marker.open('a', encoding='utf-8') as out:
+              out.write('PROJECT_DIR=' + str(project.resolve()) + '\n')
+          print('PASS: V24-V109 source generation preserved; official logo installed and V1152 label/version set', flush=True)
+          print('V1152 source reference: pinned V24 original + unchanged V109 pipeline, with V110 logo branding',flush=True)
+          PY_V110_BUILD
+      - name: V1153 Install NEW foreground live globe, observed signals and functioning source health
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/v1153-source"
+          python3 - "$RUNNER_TEMP/v1153-source" <<'V1153_UNPACK'
+          from pathlib import Path
+          import base64,gzip,hashlib,sys
+          root=Path(sys.argv[1]);root.mkdir(parents=True,exist_ok=True)
+          payloads={
+            'LiveCommandActivity.java': ('033deb8210a5bb07d5884f09ec29db931bd82911a6622fcd01a661cab7ba0f2b',
+              '''
+              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
+              f1rYPHngEuTq1kndPF2kSv949X9GZnKvKzYAAA==
+              '''),
+            'LiveEarthGlobeView.java': ('d808f32fa1a37ff1ed01b225bb59f65051b394d0948e3976d4f13931a9a2b295',
+              '''
+              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
+              '''),
+            'install_v1153.py': ('8e4fbf67254995f3201693891a300ae3e595431fbc4672b7d3b433dd12150d7b',
+              '''
+              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
+              XUb7moBC/wPfgoyUpRIAAA==
+              '''),
+          }
+          for name,(expected,encoded) in payloads.items():
+              content=gzip.decompress(base64.b64decode(''.join(encoded.split()),validate=True))
+              digest=hashlib.sha256(content).hexdigest()
+              if digest!=expected:raise SystemExit('V1153 source checksum mismatch: '+name)
+              (root/name).write_bytes(content)
+              print('VERIFIED NEW CODE',name,len(content),digest)
+          V1153_UNPACK
+          python3 "$RUNNER_TEMP/v1153-source/install_v1153.py" "$PROJECT_DIR"
+          echo 'V1153 native live launcher and brand installed. Next step compiles NEW Java code.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Compile the complete preserved native Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+      - name: Verify real APK package, DEX and branded image
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_V110_APK'
+          import os
+          import pathlib
+          import hashlib
+          import zipfile
+          import subprocess
+          project = pathlib.Path(os.environ['PROJECT_DIR'])
+          apks = list((project / 'app/build/outputs/apk/debug').glob('*.apk'))
+          assert len(apks) == 1, 'Expected precisely one compiled APK'
+          apk = apks[0]
+          assert apk.stat().st_size > 20000, 'APK empty or unexpectedly small'
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None, 'Broken APK zip'
+              names = z.namelist()
+              assert 'classes.dex' in names, 'Compiled Java missing'
+              assert 'AndroidManifest.xml' in names, 'Android manifest missing'
+              assert 'assets/develop_uganda_logo.png' in names, 'Official logo missing from APK'
+              assert any(n.endswith('/develop_uganda_logo.png') for n in names), 'Launcher drawable missing'
+              digest = hashlib.sha256(z.read('assets/develop_uganda_logo.png')).hexdigest()
+              assert digest == 'e583513eda20b22ee9a9641c58a2b58869fd9997a94ae49c1321c378aa32d97b', 'Wrong official logo'
+          sdk = pathlib.Path(os.environ.get('ANDROID_HOME') or os.environ['ANDROID_SDK_ROOT'])
+          bt = sdk / 'build-tools/36.0.0'
+          subprocess.run([str(bt / 'apksigner'), 'verify', str(apk)], check=True)
+          badge = subprocess.check_output([str(bt / 'aapt'), 'dump', 'badging', str(apk)], text=True)
+          assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in badge, 'Original installation identity lost'
+          assert "versionCode='1153'" in badge, 'V1153 versionCode missing'
+          assert "RUNNINGBALL2-V1153-DEVELOP-UGANDA" in badge, 'V1153 versionName missing'
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'release'
+          target.mkdir(parents=True, exist_ok=True)
+          output = target / 'RUNNINGBALL2-V1153-DEVELOP-UGANDA.apk'
+          output.write_bytes(apk.read_bytes())
+          print('PASS V1153 signed debug APK', output, output.stat().st_size, flush=True)
+          PY_V110_APK
+      - name: V1153 Verify new compiled native code is DIFFERENT from V1152 (not a renamed APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/release/RUNNINGBALL2-V1153-DEVELOP-UGANDA.apk" <<'V1153_NEW_DEX'
+          import hashlib,sys,zipfile
+          baseline={
+              '7ad94b66b28191d205452847a9fd5688639e8bc957842fddba0fd934d9409b82',
+              '9b5003f4536f19f7af5d94ea30b7145465df087aa2758d68f7d723e74d5d4b60'}
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              dex=[z.read(n) for n in z.namelist() if n.endswith('.dex')]
+              assert dex,'No native compiled DEX code'
+              names=[b'LiveCommandActivity',b'LiveEarthGlobeView',b'earthquake.usgs.gov',b'opensky-network.org']
+              for marker in names:
+                  assert any(marker in d for d in dex),'Missing real new implementation: '+repr(marker)
+              sha=[hashlib.sha256(d).hexdigest() for d in dex]
+              assert set(sha)!=baseline,'V1153 DEX UNCHANGED from V1152; refuse toy version upgrade'
+              print('PASS: NEW native code, real feed URLs and moving globe class compiled into APK')
+              print('V1153 DEX SHA256',sha)
+          V1153_NEW_DEX
+      - name: Grant Android emulator KVM access
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: V1153 DEVICE GATE - real foreground UI opens and animated globe changes frame
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 4
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            APK="$RUNNER_TEMP/release/RUNNINGBALL2-V1153-DEVELOP-UGANDA.apk"
+            test -s "$APK"
+            adb install -r "$APK"
+            adb shell am start -n 'com.sentongoharuna.worldsituationroom.rb2live25/com.sentongoharuna.worldsituationroom.LiveCommandActivity'
+            sleep 5
+            adb shell dumpsys activity activities | grep -q LiveCommandActivity
+            adb shell uiautomator dump /sdcard/v1153-ui.xml >/dev/null
+            adb shell cat /sdcard/v1153-ui.xml > /tmp/V1153_UI.xml
+            grep -q 'WORLD SITUATION ROOM' /tmp/V1153_UI.xml
+            grep -q 'OPENSKY' /tmp/V1153_UI.xml
+            adb exec-out screencap -p > /tmp/V1153_FRAME_A.png
+            sleep 2
+            adb exec-out screencap -p > /tmp/V1153_FRAME_B.png
+            python3 -m pip install --quiet Pillow
+            python3 - <<'V1153_MOTION'
+            from PIL import Image,ImageChops
+            a=Image.open('/tmp/V1153_FRAME_A.png').convert('RGB')
+            b=Image.open('/tmp/V1153_FRAME_B.png').convert('RGB')
+            assert a.size==b.size and a.width>=480
+            # Native globe occupies below the app header, avoiding the live UTC clock area.
+            region=(int(a.width*.1),int(a.height*.14),int(a.width*.9),int(a.height*.40))
+            diff=ImageChops.difference(a.crop(region),b.crop(region))
+            assert diff.getbbox() is not None,'Foreground globe frame did not change'
+            print('PASS V1153 on emulator: new interface visible, motion changed screen pixels')
+            V1153_MOTION
+      - name: Upload actual V1153 emulator screenshots and navigation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUNNINGBALL2-V1153-REAL-SCREEN-EVIDENCE
+          path: |
+            /tmp/V1153_FRAME_A.png
+            /tmp/V1153_FRAME_B.png
+            /tmp/V1153_UI.xml
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload real compiled V1153 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUNNINGBALL2-V1153-APK-BACKUP-ARTIFACT
+          path: ${{ runner.temp }}/release/RUNNINGBALL2-V1153-DEVELOP-UGANDA.apk
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish directly installable APK on GitHub Releases (no ZIP extraction)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK="$RUNNER_TEMP/release/RUNNINGBALL2-V1153-DEVELOP-UGANDA.apk"
+          test -s "$APK" || { echo "::error::Compiled V1153 APK is missing"; exit 1; }
+          gh --version
+          # GitHub Artifacts are always ZIP downloads. Release assets retain .apk extension.
+          if gh release view "v1153" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "v1153" "$APK" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "v1153" "$APK" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "RUNNINGBALL2 V1153 | DEVELOP.UGANDA" \
+              --notes "Direct installable APK, preserved V24-V109 development chain, DEVELOP.UGANDA logo and package identity. Android versionCode 1153. Release asset SHA and bytes are verified identical to built APK. No invented live data. Device runtime still requires testing." \
+              --latest=false
+          fi
+          echo '## V1153 Direct APK (not ZIP)' >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/v1153/RUNNINGBALL2-V1153-DEVELOP-UGANDA.apk" >> "$GITHUB_STEP_SUMMARY"
+          gh release view v1153 --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | select(.name=="RUNNINGBALL2-V1153-DEVELOP-UGANDA.apk") | .name + " " + (.size|tostring)' | tee /tmp/V1153_RELEASE_ASSET.txt
+          test -s /tmp/V1153_RELEASE_ASSET.txt || { echo "::error::Release asset not visible"; exit 1; }
+      - name: Verify public V1153 release delivers the identical installable APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK="$RUNNER_TEMP/release/RUNNINGBALL2-V1153-DEVELOP-UGANDA.apk"
+          RELEASE_DIR="$RUNNER_TEMP/verified-direct-release"
+          mkdir -p "$RELEASE_DIR"
+          gh release download v1153 --repo "$GITHUB_REPOSITORY" --pattern 'RUNNINGBALL2-V1153-DEVELOP-UGANDA.apk' --dir "$RELEASE_DIR" --clobber
+          PUBLIC_APK="$RELEASE_DIR/RUNNINGBALL2-V1153-DEVELOP-UGANDA.apk"
+          test -s "$PUBLIC_APK"
+          cmp "$APK" "$PUBLIC_APK" || { echo '::error::Published APK differs from the verified built APK'; exit 1; }
+          python3 - "$PUBLIC_APK" <<'PY_V1153_DIRECT_APK'
+          import pathlib,sys,zipfile
+          p=pathlib.Path(sys.argv[1]); assert p.suffix=='.apk' and p.stat().st_size>20000
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              for f in ('AndroidManifest.xml','classes.dex','assets/develop_uganda_logo.png'):
+                  assert f in z.namelist(), f
+          print('PASS: GitHub Releases provides identical, signed Android .apk file; ZIP extraction unnecessary')
+          PY_V1153_DIRECT_APK
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          "$SDK/build-tools/36.0.0/apksigner" verify "$PUBLIC_APK"
+          echo '## V1153 Direct APK VERIFIED' >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/download/v1153/RUNNINGBALL2-V1153-DEVELOP-UGANDA.apk" >> "$GITHUB_STEP_SUMMARY"
+      - name: Display preserved-feature evidence
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/V1152_INHERITED_AUDIT.txt ]; then
+            echo '## V1153: inherited source-step audit' >> "$GITHUB_STEP_SUMMARY"
+            echo 'The audit lists original V109 generation steps executed before compiling the V1153 APK.' >> "$GITHUB_STEP_SUMMARY"
+            printf 'Source steps: '; grep -c '^EXECUTED:' /tmp/V1152_INHERITED_AUDIT.txt || true
+            tail -n 8 /tmp/V1152_INHERITED_AUDIT.txt
+          fi
+      - name: Upload inherited-feature audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RUNNINGBALL2-V1153-INHERITED-AUDIT
+          path: /tmp/V1152_INHERITED_AUDIT.txt
+          if-no-files-found: ignore
