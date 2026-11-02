@@ -1,0 +1,91 @@
+name: '159.4/2 FIX1 Original Widgets Registration Repair + APK'
+run-name: '159.4/2 FIX1 Repair original 24 widgets and build APK'
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/RUNNINGBALL2-159.4-2-FIX1-ORIGINAL-WIDGETS-APK.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  repair-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout unchanged DUWM source
+        uses: actions/checkout@v4
+
+      - name: Set up Python for inherited workflow repair
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create an isolated composite of the full 159.4/2 build with one verified manifest-gate correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --no-cache-dir 'PyYAML==6.0.3'
+          python3 - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          source = Path('.github/workflows/RUNNINGBALL2-159.4-2-ORIGINAL-WIDGETS-RESTORE.yml')
+          assert source.is_file(), 'Original 159.4/2 workflow not found: do not create an empty substitute app'
+          original = yaml.safe_load(source.read_text(encoding='utf-8'))
+          steps = original['jobs']['build']['steps']
+          assert len(steps) >= 60, 'Inherited 159.4/2 workflow is incomplete'
+
+          matches = [step for step in steps if step.get('name') ==
+                     '159.4/2 GATE compare original widget layouts, restored receipts and protected globe']
+          assert len(matches) == 1, 'Original widget verification step not unique'
+          step = matches[0]
+          broken_check = "assert any('DuwmWidgetProvider' in n for n in all_names), 'Premium widget not registered'"
+          assert step['run'].count(broken_check) == 1, 'Gate content changed: repair cannot safely apply'
+          # The original historic workflow registers .DuwmWidget1 through .DuwmWidget24,
+          # all inheriting the shared DuwmWidgetProvider Java base class. It is incorrect
+          # to require the abstract/shared base class itself to be a manifest receiver.
+          real_registration_check = '''for i in range(1,25):
+           receiver_name='.DuwmWidget'+str(i)
+           receivers=[e for e in manifest.iter('receiver') if e.get(xmlns+'name','')==receiver_name]
+           assert len(receivers)==1, ('Premium widget receiver missing or duplicated',receiver_name)
+           metadata=[m for m in receivers[0].findall('meta-data') if m.get(xmlns+'name')=='android.appwidget.provider' and m.get(xmlns+'resource')=='@xml/duwm_widget_'+str(i)]
+           assert len(metadata)==1, ('Premium widget provider metadata missing',receiver_name)
+           assert any(a.get(xmlns+'name')=='android.appwidget.action.APPWIDGET_UPDATE' for a in receivers[0].iter('action')), ('Missing real widget update intent',receiver_name)
+           java=pkg/('DuwmWidget'+str(i)+'.java')
+           assert java.is_file() and 'extends DuwmWidgetProvider' in java.read_text(), ('Widget does not extend original shared provider',receiver_name)
+           descriptor=res/'xml'/('duwm_widget_'+str(i)+'.xml')
+           assert descriptor.is_file(), ('Premium widget XML absent',receiver_name)
+           ET.parse(descriptor)
+          assert (pkg/'DuwmWidgetProvider.java').is_file(), 'Shared original premium widget engine missing' '''
+          step['run'] = step['run'].replace(broken_check, real_registration_check)
+
+          assert "assert any('DuWidget' in n for n in all_names)" in step['run'], 'Original DU widget protection gate must remain'
+          assert sum('V1159.4/1 INSTALL advanced branded share cards on every source record' in s.get('name','') for s in steps)==1, 'Branded share cards inheritance missing'
+          assert any('Compile the complete preserved native Android APK' in s.get('name','') for s in steps), 'Full native APK compilation was dropped'
+          assert any('Publish V1159.4 direct APK only after observed real-screen globe and aircraft tests pass' in s.get('name','') for s in steps), 'Real device validation was dropped'
+
+          for item in steps:
+              if 'run' in item:
+                  item.setdefault('shell','bash')
+          action = {
+              'name': 'Repaired 159.4/2 original 24 widgets + advanced share cards',
+              'description': 'Runs every step of the inherited original APK workflow, with an accurate receiver/metadata gate',
+              'runs': {'using': 'composite', 'steps': steps},
+          }
+          dst = Path('.github/actions/duwm15942-fix1/action.yml')
+          dst.parent.mkdir(parents=True, exist_ok=True)
+          dst.write_text(yaml.safe_dump(action, sort_keys=False, width=160), encoding='utf-8')
+          parsed = yaml.safe_load(dst.read_text(encoding='utf-8'))
+          assert len(parsed['runs']['steps']) == len(steps), 'Composite workflow lost inherited steps'
+          assert real_registration_check in parsed['runs']['steps'][steps.index(step)]['run'], 'Repair not preserved after YAML serialization'
+          print('PASS: generated an isolated full 159.4/2 workflow with all',len(steps),'steps preserved')
+          print('PASS: original 24 receiver registrations, per-widget XML and subclass inheritance must now verify')
+          print('PASS: protected globe, native 1159.4/1 share cards, compilation, emulator and release gates kept')
+          PY
+
+      - name: Execute the complete original Android build with repaired registration verification
+        uses: ./.github/actions/duwm15942-fix1
