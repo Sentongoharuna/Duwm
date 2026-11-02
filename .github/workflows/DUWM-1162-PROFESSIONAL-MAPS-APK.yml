@@ -39,6 +39,47 @@ jobs:
         cache-disabled: true
     - name: Install PyYAML for deterministic baseline reconstruction
       run: python3 -m pip install --disable-pip-version-check PyYAML==6.0.3
+    - name: 1162 SOURCE INTEGRITY — verify original widgets, real map payloads and nested installer syntax
+      shell: bash
+      run: |-
+        set -euo pipefail
+        python3 - <<'PY_1162_PREFLIGHT'
+        from pathlib import Path
+        import ast,base64,gzip,hashlib,re,yaml
+        ref=Path('.github/workflows/DUWM1160-MAPS.yml')
+        base=Path('.github/workflows/RUNNINGBALL2-V1159.4-1-SHARE-CARDS.yml')
+        for f in (ref,base,Path('.github/workflows/RUNNINGBALL2_V109.yml'),Path('.github/workflows/V110_FIX2_DIRECT_PHONE_UPLOAD.yml')):
+            assert f.is_file(), ('Protected baseline file is missing',str(f))
+        steps=yaml.safe_load(ref.read_text(encoding='utf-8'))['jobs']['build']['steps']
+        basesteps=yaml.safe_load(base.read_text(encoding='utf-8'))['jobs']['build']['steps']
+        assert len(steps)>=18 and len(basesteps)>=64, 'Baseline scripts are unexpectedly incomplete'
+        assert basesteps[6]['name'].startswith('Rebuild full V109 native app')
+        for title in (
+            'Rebuild intact 1159.4/1 baseline without adding or replacing widgets',
+            'Install DUWM 1160 individual sharing and genuine moving data visualizations',
+            'DUWM 1160 install 8-color incoming signal lights across every screen',
+            'DUWM 1160 MAPS: install illuminated OSM regional networks, actual moving tracks, compact signal chip',
+        ):
+            matches=[s for s in steps if s.get('name')==title]
+            assert len(matches)==1,('Baseline step missing/duplicated',title)
+            script=matches[0].get('run','')
+            assert isinstance(script,str) and script.startswith('set -euo pipefail'),title
+            match=re.search(r"<<'([^']+)'\n(.*?)\n\1(?:\n|$)",script,re.S)
+            assert match,('Malformed embedded Python heredoc',title)
+            tree=ast.parse(match.group(2),filename=title)
+            for node in tree.body:
+                if not isinstance(node,ast.Assign):continue
+                if not any(isinstance(x,ast.Name) and x.id in ('payloads','encoded') for x in node.targets):continue
+                obj=ast.literal_eval(node.value)
+                pairs=(list(obj.values()) if isinstance(obj,dict) else [])
+                for sha,payload in pairs:
+                    real=gzip.decompress(base64.b64decode(payload,validate=True))
+                    assert hashlib.sha256(real).hexdigest()==sha,('Corrupt original compressed source payload',title)
+                if isinstance(obj,str):
+                    real=gzip.decompress(base64.b64decode(obj,validate=True))
+                    assert len(real)>10000,('Missing main source payload',title)
+        print('PASS: all inherited 1160 sources and protected 1159 build stages are structurally valid and uncorrupted')
+        PY_1162_PREFLIGHT
     - name: Reconstruct protected RUNNINGBALL2 globe, source cards and exact 1160 working map engine
       shell: bash
       run: |
@@ -189,10 +230,49 @@ jobs:
         s=strings.read_text(encoding='utf-8')
         assert 'DEVELOP.UGANDA 1160' in s,'App version label source changed'
         strings.write_text(s.replace('DEVELOP.UGANDA 1160','DEVELOP.UGANDA 1162',1),encoding='utf-8')
+        # Keep the browser's diagnostic source version in sync with this compiled APK.
+        activity=pkg/'DuwmPlaceMapActivity.java'
+        java=activity.read_text(encoding='utf-8')
+        assert java.count('DEVELOP.UGANDA/1160')==2, '1160 source user agents not found'
+        activity.write_text(java.replace('DEVELOP.UGANDA/1160','DEVELOP.UGANDA/1162'),encoding='utf-8')
+        # Keep persisted signal preferences untouched, only update its accessible presentation label.
+        assert 'duwm1162' in html and 'traces.some' in html
         for n,digest in protected_hash.items():
             assert hashlib.sha256((pkg/n).read_bytes()).hexdigest()==digest,('1162 modified a protected original feature',n)
         print('PASS: 1162 professional source geometry, original globe/widgets/share cards untouched, compact honest signals')
         PY_DUWM_1162_UPGRADE
+    - name: 1162 SOURCE GATE — execute actual map JavaScript syntax check and Android manifest validation
+      shell: bash
+      run: |-
+        set -euo pipefail
+        python3 - "$PROJECT_DIR" <<'PY_1162_SOURCE_GATE'
+        from pathlib import Path
+        import ast,re,sys,hashlib,subprocess,tempfile,xml.etree.ElementTree as ET
+        root=Path(sys.argv[1]);src=root/'app/src/main';pkg=src/'java/com/sentongoharuna/worldsituationroom'
+        html=src/'assets/duwm_place_map.html'
+        assert html.is_file()
+        s=html.read_text(encoding='utf-8')
+        for key in ('https://tiles.openfreemap.org/styles/dark','window.duwmReceive','duwm1162Paint(t)',
+                    'duwm-source-tracks','duwm-route-core','duwm-road-halo'):
+            assert key in s,('Verified data map feature missing',key)
+        scripts=re.findall(r'<script(?:\s[^>]*)?>([\s\S]*?)</script>',s,re.I)
+        scripts=[item for item in scripts if item.strip()]
+        assert len(scripts)==1,'Unexpected HTML map script structure'
+        with tempfile.NamedTemporaryFile('w',suffix='.js',delete=False) as f:
+            f.write(scripts[0]);path=Path(f.name)
+        try:subprocess.run(['node','--check',str(path)],check=True)
+        finally:path.unlink(missing_ok=True)
+        manifest=src/'AndroidManifest.xml'
+        ET.parse(manifest)
+        assert 'DuwmPlaceMapActivity' in manifest.read_text(), 'Place-map Activity missing from AndroidManifest'
+        java=(pkg/'DuwmPlaceMapActivity.java').read_text()
+        assert 'DEVELOP.UGANDA/1162' in java,'Outdated map browser version'
+        assert (pkg/'DuwmSignalRail.java').is_file()
+        assert (pkg/'V115941ShareCards.java').is_file()
+        assert (pkg/'DuwmGeoObservationStore.java').is_file()
+        assert 'versionCode = 116200' in (root/'app/build.gradle.kts').read_text()
+        print('PASS: 1162 map JavaScript, manifest, cards, versions and source-based route layers')
+        PY_1162_SOURCE_GATE
     - name: 1162 | Compile signed installable Android APK
       shell: bash
       run: |
@@ -246,7 +326,7 @@ jobs:
         echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
         sudo udevadm control --reload-rules
         sudo udevadm trigger --name-match=kvm || true
-    - name: Optional emulator smoke test (APK already independently verified)
+    - name: 1162 Android emulator smoke test — require map Activity and screenshot
       uses: reactivecircus/android-emulator-runner@v2
       with:
         api-level: 34
@@ -269,8 +349,7 @@ jobs:
           grep -q 'PLACE INTELLIGENCE' "$RUNNER_TEMP/duwm1162/screen.xml"
           ! adb logcat -d -t 4500 | grep -A7 'FATAL EXCEPTION' | grep -q 'com.sentongoharuna.worldsituationroom'
           echo "PASS 1162 emulator: actual map activity launches and screenshot saved"
-      continue-on-error: true
-    - name: Upload optional 1162 emulator screenshot and UI hierarchy
+    - name: Upload 1162 emulator evidence even if runtime smoke test fails
       if: always()
       uses: actions/upload-artifact@v4
       with:
@@ -280,3 +359,13 @@ jobs:
           ${{ runner.temp }}/duwm1162/screen.xml
         retention-days: 30
         if-no-files-found: warn
+    - name: Upload 1162 build failure evidence (no false APK artifact)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: DUWM-1162-FAILURE-DIAGNOSTICS
+        path: |-
+          ${{ runner.temp }}/duwm1162/screen.xml
+          ${{ runner.temp }}/duwm1162/actual-screen.png
+        if-no-files-found: warn
+        retention-days: 14
