@@ -681,18 +681,25 @@ jobs:
                 return true;
             }
         ''','real observation selection+center')
-        g=once(g,'''if(moving&&!dragging){long now=SystemClock.uptimeMillis();long dt=Math.min(60,Math.max(0,now-previousFrame));yaw=(yaw+dt*.000105d)%(2*Math.PI);previousFrame=now;}''', '''long now=SystemClock.uptimeMillis();
-                long dt=Math.min(60,Math.max(0,now-previousFrame));previousFrame=now;
-                if(!dragging && focusPending){
-                    double dyaw=Math.atan2(Math.sin(focusYaw-yaw),Math.cos(focusYaw-yaw));
-                    double dpitch=focusPitch-pitch;
-                    double easing=1d-Math.exp(-Math.max(1,dt)/180d);
-                    yaw+=dyaw*easing;pitch+=dpitch*easing;
-                    if(Math.abs(dyaw)<.002d && Math.abs(dpitch)<.002d){yaw=focusYaw;pitch=focusPitch;focusPending=false;}
-                }else if(moving && !dragging && now-lastGestureEnd>950L){
-                    rotationBlend=Math.min(1f,rotationBlend+dt/1000f);
-                    yaw=(yaw+dt*.000105d*rotationBlend)%(2*Math.PI);
-                }''','eased real globe rotation')
+        # Prefer an exact source match; tolerate formatting differences in the rotation loop.
+        old_rotation = 'if(moving&&!dragging){long now=SystemClock.uptimeMillis();long dt=Math.min(60,Math.max(0,now-previousFrame));yaw=(yaw+dt*.000105d)%(2*Math.PI);previousFrame=now;}'
+        new_rotation = 'long now=SystemClock.uptimeMillis();\n        long dt=Math.min(60,Math.max(0,now-previousFrame));previousFrame=now;\n        if(!dragging && focusPending){\n            double dyaw=Math.atan2(Math.sin(focusYaw-yaw),Math.cos(focusYaw-yaw));\n            double dpitch=focusPitch-pitch;\n            double easing=1d-Math.exp(-Math.max(1,dt)/180d);\n            yaw+=dyaw*easing;pitch+=dpitch*easing;\n            if(Math.abs(dyaw)<.002d && Math.abs(dpitch)<.002d){yaw=focusYaw;pitch=focusPitch;focusPending=false;}\n        }else if(moving && !dragging && now-lastGestureEnd>950L){\n            rotationBlend=Math.min(1f,rotationBlend+dt/1000f);\n            yaw=(yaw+dt*.000105d*rotationBlend)%(2*Math.PI);\n        }'
+        if g.count(old_rotation) == 1:
+            g = once(g,old_rotation,new_rotation,'eased real globe rotation')
+        else:
+            # Do not erase unrelated rendering code. Only replace the original
+            # onDraw frame rotation preamble if it is known to be self-contained.
+            header='@Override protected void onDraw(Canvas canvas){'
+            frame='super.onDraw(canvas);'
+            boundary='float w=getWidth(),h=getHeight();'
+            assert g.count(header)==1 and g.count(frame)==1 and g.count(boundary)==1, 'Unknown globe frame layout; keep original rather than blind edit'
+            start=g.index(frame,g.index(header))+len(frame)
+            finish=g.index(boundary,start)
+            preamble=g[start:finish]
+            assert 10 < len(preamble) < 750 and 'moving' in preamble and 'dragging' in preamble and 'previousFrame' in preamble and 'yaw' in preamble, ('Unknown globe frame/rotation preamble',preamble[:180])
+            assert 'canvas.' not in preamble and 'objects' not in preamble and 'radius' not in preamble, 'Unrelated drawing operations must not be replaced'
+            g=g[:start]+'\n        '+new_rotation+'\n        '+g[finish:]
+            print('PASS: adapted only original globe rotation preamble, preserving all drawing and observed positions')
         g=once(g,'''p.setColor(color);canvas.drawCircle(v[0],v[1],dp(a.type==AIR?1.6f:2.4f),p);''', '''p.setColor(color);canvas.drawCircle(v[0],v[1],dp(a.type==AIR?1.6f:2.4f),p);
                     if(a==selectedObservation){
                         p.setColor(Color.rgb(245,249,255));p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(dp(1.4f));
