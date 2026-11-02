@@ -1,5 +1,5 @@
-name: DUWM 1162 | Global Intelligence and Verified Geographic Map
-run-name: DUWM 1162 | Nine real source channels / verified record map / original globe
+name: DUWM 1162 | Priority 2 - Real Global Geographic Map + Observed Source Tracking
+run-name: DUWM 1162 | P2 Geography | Source-backed map, filters, controls and preserved globe
 'on':
   workflow_dispatch: {}
   push:
@@ -389,6 +389,226 @@ jobs:
             assert hashlib.sha256((pkg/n).read_bytes()).hexdigest()==digest,('Accidentally modified protected app component',n)
         print('PASS: 9-category source receipt dashboard, map deep links, source-only observed trails, original globe untouched')
         PY_DUWM_INTEL_INSTALL
+    - name: 1162 PRIORITY 2 | Install professional geographic controls, actual map-layer filters, and dated source records
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - "$PROJECT_DIR" <<'PY_DUWM_1162_P2_GEOSPATIAL'
+        from pathlib import Path
+        import hashlib, re, sys
+
+        root=Path(sys.argv[1]); main=root/'app/src/main'; package=main/'java/com/sentongoharuna/worldsituationroom'
+        asset=main/'assets/duwm_place_map.html'; javafile=package/'DuwmPlaceMapActivity.java'
+        assert asset.is_file() and javafile.is_file(), 'Existing MapLibre geographic engine missing'
+        protected=['OperationsGlobeView.java','DuwmLiveWallpaperService.java','SatelliteMapView.java','DuWidgetProviders.java','DuWidgetUpdater.java','WidgetSnapshot.java','V115941ShareCards.java','DuwmWorldIntelligenceActivity.java']
+        checks={name:hashlib.sha256((package/name).read_bytes()).hexdigest() for name in protected if (package/name).is_file()}
+        assert len(checks)>=6,'Original globe or shared source engine not retained'
+        html=asset.read_text(encoding='utf-8'); java=javafile.read_text(encoding='utf-8')
+        for anchor in ('duwm-source-points','duwm-inferred-between-fixes','function animate(t)','window.duwmMode','function updateFeatures()','window.duwmReceive','https://tiles.openfreemap.org/styles/dark'):
+            assert anchor in html,('Unexpected geographic source, refusing blind edit',anchor)
+        assert 'duwm-p2-controls' not in html,'P2 already applied'
+
+        style='''
+        <style id="duwm-p2-controls">
+        #p2Tools{position:absolute;right:9px;top:94px;z-index:10;display:flex;flex-direction:column;gap:5px;max-width:90px}
+        #p2Tools button{width:76px;min-height:36px;border:1px solid #46839b9c;border-radius:6px;background:#071e30e9;color:#dcf6fb;font-size:11px;font-weight:650;letter-spacing:.035em;padding:5px 4px;box-shadow:0 3px 10px #0007}
+        #p2Tools button:active{background:#285879}#p2Tools button:focus-visible{outline:2px solid #68e8f0}
+        #p2State{position:absolute;z-index:9;bottom:55px;left:9px;right:91px;min-height:32px;max-height:70px;overflow:auto;border-radius:5px;padding:7px 9px;background:#071c2ddf;color:#bde2eb;font:10px/1.5 system-ui,Roboto,sans-serif;pointer-events:none;border:1px solid #306b8466}
+        #observed{font-variant-numeric:tabular-nums}#p2Tools button[disabled]{opacity:.45}
+        @media(max-height:440px){#p2Tools{top:40px;gap:2px}#p2Tools button{min-height:29px}#p2State{bottom:35px}}
+        </style>
+        '''
+        assert html.count('</head>')==1
+        html=html.replace('</head>',style+'</head>',1)
+        html=html.replace('<div id="compass">N</div>', '''<div id="compass">N</div>
+        <div id="p2Tools" role="group" aria-label="Geographic map controls">
+        <button id="p2Home" type="button" title="Return to Kampala">HOME</button>
+        <button id="p2Fit" type="button" title="Frame received, observed locations">FIT DATA</button>
+        <button id="p2Plus" type="button" title="Zoom in">ZOOM +</button>
+        <button id="p2Minus" type="button" title="Zoom out">ZOOM −</button>
+        <button id="p2Tilt" type="button" title="Switch between 2D and 3D viewing">2D / 3D</button>
+        </div>
+        <div id="p2State" role="status" aria-live="polite">CONNECTING TO MAP TILES • SOURCE-RECORDED COORDINATES ONLY</div>''',1)
+        # Remove generated moving dots along a straight line between two reports (not observed locations).
+        source=" map.addSource('duwm-inferred-between-fixes',{type:'geojson',data:empty});\n"
+        layer=" map.addLayer({id:'duwm-travel-indicator',type:'circle',source:'duwm-inferred-between-fixes',paint:{'circle-color':'#a8f4f2','circle-radius':4,'circle-stroke-color':'#e9ffff','circle-stroke-width':1}});\n"
+        assert html.count(source)==1 and html.count(layer)==1
+        html=html.replace(source,'').replace(layer,'')
+
+        # Prefer an explicit source timestamp to avoid drawing undated or very stale points.
+        start=html.find('function updateFeatures(){')
+        end=html.find('function selectItem(id)',start)
+        assert start>0 and end>start, 'Map feature updater changed unexpectedly'
+        feature_code='''function modeAccepts(record){
+         if(mode==='CITY')return true;
+         const wanted={AIR:'AIRCRAFT',SEA:'VESSEL',QUAKE:'EARTHQUAKE',SAT:'ISS',WEATHER:'WEATHER',NEWS:'NEWS'};
+         return record.kind===wanted[mode];
+        }
+        function usableRecord(p){
+         if(!p || typeof p.id!=='string' || !safeNum(p.lon) || !safeNum(p.lat) || !safeNum(p.time))return false;
+         if(Math.abs(p.lat)>85 || Math.abs(p.lon)>180 || p.time<=0)return false;
+         const now=Date.now(), age=now-p.time;
+         if(age < -300000)return false; // bad source clock, not an observation from the future
+         // Weather is a point forecast, quake events are historical; moving positions expire rapidly.
+         const limit=p.kind==='EARTHQUAKE'?604800000:p.kind==='WEATHER'?10800000:900000;
+         return age<=limit;
+        }
+        function updateFeatures(){
+         const filtered=points.filter(p=>usableRecord(p)&&modeAccepts(p));
+         const validFixes=traces.filter(t=>t && safeNum(t.lat1) && safeNum(t.lon1) && safeNum(t.lat2) && safeNum(t.lon2)
+           && Math.abs(t.lat1)<=85 && Math.abs(t.lat2)<=85 && Math.abs(t.lon1)<=180 && Math.abs(t.lon2)<=180
+           && safeNum(t.from) && safeNum(t.to) && t.to>t.from && t.to<=Date.now()+300000
+           && Date.now()-t.to<=900000 && ['AIRCRAFT','ISS'].includes(t.kind) && modeAccepts(t));
+         if(map && map.isStyleLoaded() && map.getSource('duwm-source-points')){
+          map.getSource('duwm-source-points').setData({type:'FeatureCollection',features:filtered.map(geojsonPoint)});
+          map.getSource('duwm-source-tracks').setData({type:'FeatureCollection',features:validFixes.map(t=>({
+            type:'Feature',properties:{kind:t.kind,from:t.from,to:t.to,description:'STRAIGHT SEGMENT BETWEEN TWO REPORTED FIXES — NOT THE ACTUAL ROUTE'},
+            geometry:{type:'LineString',coordinates:[[t.lon1,t.lat1],[t.lon2,t.lat2]]}}))});
+         }
+         const banner=mode==='SEA'?'AIS DATA FEED NOT CONFIGURED':mode==='NEWS'?'NEWS WITHOUT VERIFIED GEOGRAPHIC COORDINATES IS NOT MAPPED':
+           filtered.length===0?'NO FRESH, SOURCE-GEOLOCATED RECORDS FOR '+mode:'TAP A POINT FOR RECORD / SOURCE / OBSERVATION TIME';
+         document.getElementById('observed').textContent=mode+' '+filtered.length+' FIXES';
+         document.getElementById('p2State').textContent=banner+' • '+validFixes.length+' OBSERVED FIX PAIRS';
+         return filtered;
+        }
+        function fitObserved(){
+         const displayed=points.filter(p=>usableRecord(p)&&modeAccepts(p));
+         if(!map || !map.isStyleLoaded() || !displayed.length){
+          document.getElementById('p2State').textContent='NO FRESH GEOLOCATED '+mode+' RECORDS TO FRAME';return;
+         }
+         const first=displayed[0];let west=first.lon,east=first.lon,south=first.lat,north=first.lat;
+         for(const p of displayed){west=Math.min(west,p.lon);east=Math.max(east,p.lon);south=Math.min(south,p.lat);north=Math.max(north,p.lat);}
+         if(displayed.length===1){map.easeTo({center:[first.lon,first.lat],zoom:8,pitch:0,duration:650});return;}
+         map.fitBounds([[west,south],[east,north]],{padding:{top:75,bottom:85,left:35,right:100},maxZoom:12,duration:900});
+        }
+        '''
+        html=html[:start]+feature_code+html[end:]
+        # Mode choice must actually restrict observed features, not just change paint color.
+        mode_anchor="window.duwmMode=function(next){if(!modes[next])return;mode=next;updateLayerPalette();"
+        assert html.count(mode_anchor)==1
+        html=html.replace(mode_anchor,mode_anchor+'updateFeatures();',1)
+
+        # Replace only the false, interpolated dot animation within the existing animation loop.
+        block_start=html.find("  if(map.getSource('duwm-inferred-between-fixes')&&traces.length){")
+        assert block_start!=-1, 'Original extrapolated moving dot block missing'
+        block_end=html.find("  }\n }\n setTimeout(()=>requestAnimationFrame(animate),125);",block_start)
+        assert block_end!=-1, 'Original animation boundary missing'
+        html=html[:block_start]+html[block_end+4:]
+        assert 'duwm-inferred-between-fixes' not in html and 'INTERPOLATED BETWEEN' not in html
+
+        # Actual map controls operate on the rendered map, and are visible and touchable.
+        controls='''
+        // Navigation controls operate on the actual vector map, not a decorative picture.
+        document.getElementById('p2Home').addEventListener('click',()=>{
+         window.duwmFocus(.3476,32.5825,11.1,'Kampala');
+        });
+        document.getElementById('p2Fit').addEventListener('click',fitObserved);
+        document.getElementById('p2Plus').addEventListener('click',()=>{if(map)map.zoomIn({duration:350});});
+        document.getElementById('p2Minus').addEventListener('click',()=>{if(map)map.zoomOut({duration:350});});
+        document.getElementById('p2Tilt').addEventListener('click',()=>{if(map)map.easeTo({pitch:map.getPitch()>5?0:48,duration:450});});
+        '''
+        assert html.count('try{\n if(typeof maplibregl')==1
+        html=html.replace('try{\n if(typeof maplibregl',controls+'\ntry{\n if(typeof maplibregl',1)
+        html=html.replace('map.on(\'load\',()=>{','map.on(\'load\',()=>{\n   document.getElementById(\'p2State\').textContent=\'MAP TILES READY • WAITING FOR SOURCE-OBSERVED POINTS\';',1)
+        # event updates are triggered after native refresh, on map style load, and after mode choice.
+        html=html.replace('window.duwmReceive=function(payload){if(!payload)return;','window.duwmReceive=function(payload){if(!payload)return;',1)
+
+        # Native record details: timestamp, provider and accurate modelled weather distinction.
+        select_anchor='if(p!=null)focusDetail.setText(p.optString("kind")+" • "+p.optString("title")+"\\n"+p.optString("detail")+"  /  "+p.optString("source"));'
+        assert java.count(select_anchor)==1, 'Native point detail format changed unexpectedly'
+        replacement='''if(p!=null){long measured=p.optLong("time",0);
+                  String when=measured<=0?"SOURCE TIME UNAVAILABLE":new java.text.SimpleDateFormat("dd MMM yyyy HH:mm 'UTC'",java.util.Locale.US){{setTimeZone(java.util.TimeZone.getTimeZone("UTC"));}}.format(new java.util.Date(measured));
+                  focusDetail.setText(p.optString("kind")+"  •  "+p.optString("title")+"\\n"+p.optString("detail")+"\\nSOURCE  "+p.optString("source")+"  •  "+when+"\\nTap SHARE to send this record");}'''
+        # no double brace anonymous inner, use local formatter straightforward
+        replacement=replacement.replace('new java.text.SimpleDateFormat("dd MMM yyyy HH:mm \'UTC\'",java.util.Locale.US){{setTimeZone(java.util.TimeZone.getTimeZone("UTC"));}}.format(new java.util.Date(measured))',
+          'formatSourceTime(measured)')
+        java=java.replace(select_anchor,replacement,1)
+        java=java.replace('  private boolean intercept(Uri uri){', '''  private String formatSourceTime(long millis){
+            java.text.SimpleDateFormat format=new java.text.SimpleDateFormat("dd MMM yyyy HH:mm 'UTC'",java.util.Locale.US);
+            format.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));return format.format(new java.util.Date(millis));
+          }
+          private boolean intercept(Uri uri){''',1)
+        # Populate native header without claiming that downloaded map tiles are live traffic.
+        assert 'MAP STATUS  /  '+'' in java
+        assert 'duwm-p2-controls' in html
+        assert 'function fitObserved()' in html and 'function modeAccepts' in html
+        assert 'V115941ShareCards.share' in java
+        asset.write_text(html,encoding='utf-8');javafile.write_text(java,encoding='utf-8')
+        for name,digest in checks.items():
+            assert hashlib.sha256((package/name).read_bytes()).hexdigest()==digest,('Protected baseline modified',name)
+        print('PASS DUWM 1162 Priority 2: actual mode-specific observations, source-time filtering, honest track geometry, touch controls and shareable dated records')
+        PY_DUWM_1162_P2_GEOSPATIAL
+    - name: 1162 PRIORITY 2 | Test map source, JavaScript, filtering, and real coordinate interactions
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - "$PROJECT_DIR" <<'PY_DUWM_1162_P2_JS'
+        from pathlib import Path
+        import re,sys
+        root=Path(sys.argv[1])
+        html=root/'app/src/main/assets/duwm_place_map.html'
+        source=html.read_text(encoding='utf-8')
+        found=re.findall(r'<script(?:\s[^>]*)?>([\s\S]*?)</script>',source)
+        js=[x for x in found if 'window.duwmReceive' in x]
+        assert len(js)==1, 'Map receiver JavaScript absent or ambiguous'
+        assert 'duwm-inferred-between-fixes' not in js[0], 'Fake animated markers must be removed'
+        assert 'function modeAccepts' in js[0] and 'function fitObserved' in js[0]
+        assert 'OpenFreeMap vector tiles' in source or 'OpenStreetMap contributors' in source
+        (root/'duwm1162_geospatial_test.js').write_text(js[0],encoding='utf-8')
+        print('PASS: verified map script extracted for syntax and interaction checks')
+        PY_DUWM_1162_P2_JS
+        node --check "$PROJECT_DIR/duwm1162_geospatial_test.js"
+        cat > "$RUNNER_TEMP/duwm1162-geospatial-test.js" <<'JS_DUWM_1162_P2'
+        const fs=require('fs'),vm=require('vm'),assert=require('assert');
+        const html=fs.readFileSync(process.argv[2],'utf8');
+        const code=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map(m=>m[1]).filter(s=>s.includes('window.duwmReceive'));
+        assert.strictEqual(code.length,1,'No unique verified map JavaScript source');
+        let documentNodes={}, map;
+        const node=id=>documentNodes[id]||(documentNodes[id]={textContent:'',style:{},handlers:{},addEventListener(kind,fn){this.handlers[kind]=fn;}});
+        class FakeMap{
+         constructor(){this.layers={};this.sources={};this.events={};this.paint={};this.zoom=11;this.pitch=48;this.lastBounds=null;map=this;}
+         isStyleLoaded(){return true;}
+         getStyle(){return {layers:[{id:'road',source:'openfreemap', 'source-layer':'transportation'}, {id:'water',source:'openfreemap','source-layer':'water'}, {id:'buildings',source:'openfreemap','source-layer':'building'}]};}
+         addLayer(d){this.layers[d.id]=d;}
+         getLayer(id){return this.layers[id];}
+         setPaintProperty(id,property,value){this.paint[id+':'+property]=value;}
+         addSource(id,settings){this.sources[id]={current:settings.data, setData(data){this.current=data;}};}
+         getSource(id){return this.sources[id];}
+         on(event,a,b){if(event==='load'&&typeof a==='function')this.events.load=a;}
+         getCanvas(){return {style:{}};}
+         easeTo(opts){this.lastEase=opts;this.pitch=opts.pitch??this.pitch;}
+         flyTo(opts){this.lastFly=opts;}
+         fitBounds(bounds,options){this.lastBounds={bounds,options};}
+         zoomIn(){this.zoom++;}
+         zoomOut(){this.zoom--;}
+         getPitch(){return this.pitch;}
+         }
+        const sandbox={window:{location:{href:''}},maplibregl:{Map:FakeMap},console,
+          document:{hidden:false,getElementById:node,addEventListener:()=>{},documentElement:{style:{setProperty(){}}}},
+          setTimeout:()=>{},requestAnimationFrame:()=>{},Date,Math,Number,Array,JSON};
+        vm.createContext(sandbox);vm.runInContext(code[0],sandbox,{timeout:1500});
+        assert(map && map.events.load,'Map initialization failed'); map.events.load();
+        const now=Date.now();
+        const good=(id,kind,age,lat,lon)=>({id,kind,title:id,source:'real source',time:now-age,lat,lon});
+        const records=[good('a','AIRCRAFT',30000,1,2),good('q','EARTHQUAKE',60000,-2,1),good('iss','ISS',20000,13,20),good('w','WEATHER',60000,4,5),good('old','AIRCRAFT',3600000,6,7),{id:'no-time',kind:'ISS',time:0,lat:1,lon:4}];
+        sandbox.window.duwmReceive({points:records,traces:[{id:'a',kind:'AIRCRAFT',lat1:0,lon1:1,lat2:1,lon2:2,from:now-55000,to:now-30000}]});
+        const pos=()=>map.getSource('duwm-source-points').current.features.map(f=>f.id);
+        assert.strictEqual(pos().length,4,'All valid, fresh records should appear in CITY');
+        assert.strictEqual(map.getSource('duwm-source-tracks').current.features.length,1,'Observed fix pair missing');
+        assert(!map.getSource('duwm-inferred-between-fixes'),'Imaginary moving fixes must not exist');
+        sandbox.window.duwmMode('AIR');assert.deepStrictEqual(pos(),['a'],'AIR must display real aircraft only');
+        assert.strictEqual(map.getSource('duwm-source-tracks').current.features.length,1);
+        sandbox.window.duwmMode('SEA');assert.strictEqual(pos().length,0,'SEA without AIS must not show invented ships');
+        assert(node('p2State').textContent.includes('AIS DATA FEED NOT CONFIGURED'));
+        sandbox.window.duwmMode('QUAKE');assert.deepStrictEqual(pos(),['q']);
+        node('p2Fit').handlers.click();assert(map.lastEase || map.lastBounds,'FIT DATA must navigate map');
+        const before=map.zoom;node('p2Plus').handlers.click();assert.strictEqual(map.zoom,before+1);
+        node('p2Minus').handlers.click();assert.strictEqual(map.zoom,before);
+        node('p2Home').handlers.click();assert(map.lastEase && map.lastEase.center[0]===32.5825,'HOME location not applied');
+        node('p2Tilt').handlers.click();assert(map.getPitch()===0,'2D/3D control did not change pitch');
+        console.log('PASS dynamic geospatial checks: true source coordinates, mode filtering, freshness, no invented AIS or interpolated markers, FIT/HOME/ZOOM/2D controls');
+        JS_DUWM_1162_P2
+        node "$RUNNER_TEMP/duwm1162-geospatial-test.js" "$PROJECT_DIR/app/src/main/assets/duwm_place_map.html"
     - name: 1162 | Compile signed installable Android APK
       shell: bash
       run: |
@@ -456,6 +676,25 @@ jobs:
             assert 'assets/duwm_place_map.html' in z.namelist(), 'Existing geographic map missing'
         print('PASS: compiled APK contains nine-category source dashboard, real point map bridge, original globe and widgets')
         PY_DUWM_GLOBAL_VERIFY
+    - name: 1162 PRIORITY 2 | Confirm full map functionality is packaged in the compiled APK
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - "$RUNNER_TEMP/duwm1162/DUWM-1162.apk" <<'PY_DUWM_1162_P2_PACKAGE'
+        import sys,zipfile
+        p=sys.argv[1]
+        with zipfile.ZipFile(p) as z:
+            assert z.testzip() is None
+            assert 'assets/duwm_place_map.html' in z.namelist()
+            html=z.read('assets/duwm_place_map.html')
+            for token in (b'duwm-p2-controls',b'function modeAccepts',b'function fitObserved',b'AIS DATA FEED NOT CONFIGURED',b'OBSERVED FIX PAIRS'):
+                assert token in html, ('1162 P2 map feature not packaged in APK',token)
+            assert b'duwm-inferred-between-fixes' not in html,'Interpolated point rendering still packaged'
+            dex=b''.join(z.read(name) for name in z.namelist() if name.endswith('.dex'))
+            for marker in (b'DuwmPlaceMapActivity',b'DuwmWorldIntelligenceActivity',b'V115941ShareCards',b'DuWidgetProviders',b'OperationsGlobeView'):
+                assert marker in dex, ('Protected globe/widget or new map activity missing from compiled APK',marker)
+        print('PASS: 1162 P2 live geographic map features and protected globe present in final APK')
+        PY_DUWM_1162_P2_PACKAGE
     - name: Publish genuine 1162 APK artifact only after signed APK validation
       uses: actions/upload-artifact@v4
       with:
