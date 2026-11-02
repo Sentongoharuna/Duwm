@@ -1,0 +1,327 @@
+name: "DUWM 1161 | Professional Living Maps + Compact Verified Signals"
+run-name: "DUWM 1161 | Preserve RB2 | Improve actual map engine and signal placement"
+'on':
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/DUWM-1161-MAP-INTELLIGENCE-APK.yml"
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout existing DUWM repository
+        uses: actions/checkout@v4
+
+      - name: Checkout protected original RUNNINGBALL2 engine
+        uses: actions/checkout@v4
+        with:
+          repository: Sentongoharuna/Du-World-Situation-Room-
+          ref: 7d952dd607cdeec94832896023c10203425a3b7f
+          path: rb2-original-source
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+
+      - name: Install PyYAML for deterministic baseline reconstruction
+        run: python3 -m pip install --disable-pip-version-check PyYAML==6.0.3
+
+      - name: Rebuild verified original widgets and all functional 1160 map source steps
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_REBUILD_1161'
+          from pathlib import Path
+          import os, subprocess, tempfile, yaml
+          old = Path('.github/workflows/DUWM1160-MAPS.yml')
+          assert old.is_file(), 'DUWM1160-MAPS.yml is missing: do not rebuild from inferior baseline'
+          actions = yaml.safe_load(old.read_text(encoding='utf-8'))['jobs']['build']['steps']
+          expected = [
+              'Rebuild intact 1159.4/1 baseline without adding or replacing widgets',
+              'Install DUWM 1160 individual sharing and genuine moving data visualizations',
+              'DUWM 1160 install 8-color incoming signal lights across every screen',
+              'DUWM 1160 MAPS: install illuminated OSM regional networks, actual moving tracks, compact signal chip'
+          ]
+          assert len(actions) >= 14
+          for title in expected:
+              assert sum(s.get('name') == title for s in actions) == 1, ('Baseline drift', title)
+          workspace = Path(os.environ['GITHUB_WORKSPACE'])
+          env = os.environ.copy()
+          envfile = Path(env['GITHUB_ENV'])
+          for title in expected:
+              entry = next(s for s in actions if s.get('name') == title)
+              script = entry.get('run')
+              assert isinstance(script, str) and 100 < len(script) < 200000
+              assert '${{' not in script, 'Untrusted nested workflow expression'
+              with tempfile.NamedTemporaryFile(prefix='duwm1161-', suffix='.sh',
+                                               dir=env['RUNNER_TEMP'], mode='w', delete=False) as f:
+                  f.write(script)
+                  tmp = Path(f.name)
+              print('REBUILD:', title, flush=True)
+              try:
+                  result = subprocess.run(['bash', '-eo', 'pipefail', str(tmp)],
+                                          cwd=workspace, env=env, check=False)
+                  assert result.returncode == 0, ('Source generation failed', title, result.returncode)
+              finally:
+                  tmp.unlink(missing_ok=True)
+              if envfile.exists():
+                  for line in envfile.read_text().splitlines():
+                      if '=' in line:
+                          key, val = line.split('=', 1)
+                          if key.isidentifier(): env[key] = val
+          project = Path(env.get('PROJECT_DIR', ''))
+          assert project.is_dir(), 'Full Android project source was not generated'
+          path = project / 'app/src/main/java/com/sentongoharuna/worldsituationroom'
+          for name in ('OperationsGlobeView.java','DuwmLiveWallpaperService.java',
+                       'DuWidgetProviders.java','V115941ShareCards.java',
+                       'DuwmPlaceMapActivity.java','DuwmGeoObservationStore.java',
+                       'DuwmSignalRail.java','PulseDataActivity.java'):
+              assert (path / name).is_file(), ('Missing feature', name)
+          assert (project/'app/src/main/assets/duwm_place_map.html').is_file()
+          with envfile.open('a') as f:
+              f.write('PROJECT_DIR='+str(project.resolve())+'\n')
+          print('PASS: full original widgets and globe, share cards, signals and actual OSM map source')
+          PY_REBUILD_1161
+
+      - name: Apply 1161 professional map visual upgrades and compact corner signal chip
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$PROJECT_DIR" <<'PY_1161_UPGRADE'
+          from pathlib import Path
+          import re,sys,hashlib
+          root=Path(sys.argv[1]); main=root/'app/src/main'
+          pkg=main/'java/com/sentongoharuna/worldsituationroom'
+          htmlfile=main/'assets/duwm_place_map.html'
+          railfile=pkg/'DuwmSignalRail.java'
+          gradle=root/'app/build.gradle.kts'
+          strings=main/'res/values/strings.xml'
+          assert htmlfile.is_file() and railfile.is_file(), 'Working 1160 map/rail absent'
+          original_widgets = {p:hashlib.sha256(p.read_bytes()).hexdigest()
+              for p in pkg.glob('*.java') if p.name in
+              ('OperationsGlobeView.java','DuwmLiveWallpaperService.java',
+               'DuWidgetProviders.java','DuWidgetUpdater.java','WidgetSnapshot.java',
+               'V115941ShareCards.java','SatelliteMapView.java')}
+          html=htmlfile.read_text(encoding='utf-8')
+          assert 'tiles.openfreemap.org/styles/dark' in html, 'True OpenFreeMap source missing'
+          assert 'duwm-road-halo' in html and 'duwm-route-core' in html, 'Road/route geometry missing'
+          assert 'window.duwmReceive' in html, 'Provider-to-map live data bridge missing'
+          assert html.count('</head>')==1 and html.count('</body>')==1
+
+          # Capture the already constructed MapLibre instance. No simulation, invented paths or points.
+          construct=re.compile(r'new\s+maplibregl\.Map\s*\(',re.I)
+          html,n=construct.subn('window.__duwm1161Map = new maplibregl.Map(',html,count=1)
+          assert n==1, 'Unable to bind real vector map; cannot assert 1161 enhancement'
+          style = """
+          <style id="duwm1161-professional-map">
+            :root { color-scheme:dark; }
+            .maplibregl-canvas { filter: contrast(1.11) saturate(1.15); }
+            .maplibregl-marker { filter: drop-shadow(0 0 4px rgba(36,206,255,.73)); }
+            .maplibregl-ctrl-group {
+              background:rgba(8,21,38,.88)!important;
+              border:1px solid rgba(49,160,204,.27)!important;
+              box-shadow:0 2px 14px rgba(0,0,0,.32)!important;
+            }
+            .maplibregl-popup-content {
+              background:#081b2a!important;
+              color:#e5f6ff!important;
+              border:1px solid rgba(69,181,224,.45)!important;
+              border-radius:7px!important;
+              box-shadow:0 6px 30px rgba(0,0,0,.6)!important;
+            }
+            .maplibregl-popup-tip { border-top-color:#081b2a!important; }
+          </style>
+          """
+          html=html.replace('</head>',style+'</head>',1)
+          script = """
+          <script id="duwm1161-verified-geometry">
+          (function(){
+            'use strict';
+            // No synthetic markers, route coordinates, aircraft, ships or event counters.
+            // Changes are exclusively applied to the existing OSM source-derived layers
+            // and existing source-reported route/marker layers.
+            var map = null, lastStyle='', lastPaint=0;
+            function paint(id, key, value) {
+              try {
+                var l=map.getLayer(id);
+                if(l)map.setPaintProperty(id,key,value);
+              }catch(e){ /* a missing style layer must never blank the map */ }
+            }
+            function enhance(){
+              map=window.__duwm1161Map;
+              if(!map || !map.getStyle || !map.isStyleLoaded || !map.isStyleLoaded())return;
+              var st=map.getStyle();
+              if(!st || !st.layers)return;
+              var key=String(st.sprite||'')+'/'+st.layers.length;
+              if(key!==lastStyle){
+                lastStyle=key;
+                // The road halo, only when backed by the actual OpenFreeMap line layer.
+                st.layers.forEach(function(layer){
+                  if(!layer.id || !layer.type)return;
+                  var id=layer.id, lower=id.toLowerCase();
+                  if(layer.type==='line' && /duwm-road-halo/.test(lower)){
+                    paint(id,'line-color','#14bfe5');
+                    paint(id,'line-opacity',0.58);
+                    paint(id,'line-width',2.8);
+                    paint(id,'line-blur',2.4);
+                  }
+                  if(layer.type==='line' && /duwm-route-core/.test(lower)){
+                    paint(id,'line-color','#66e6ff');
+                    paint(id,'line-opacity',0.93);
+                    paint(id,'line-width',2.3);
+                  }
+                  if(layer.type==='fill-extrusion' && /building/.test(lower)){
+                    // Existing OSM building footprints, never invented building geometry.
+                    paint(id,'fill-extrusion-opacity',0.8);
+                  }
+                });
+              }
+            }
+            function animate(ts){
+              try{
+                enhance();
+                if(map && !document.hidden && ts-lastPaint>=160){
+                  lastPaint=ts;
+                  // The trace glows only if the actual provider-derived route layer exists.
+                  var intensity=.72+.18*Math.sin(ts/650);
+                  paint('duwm-route-core','line-opacity',intensity);
+                }
+              }catch(e){}
+              window.requestAnimationFrame(animate);
+            }
+            window.requestAnimationFrame(animate);
+          })();
+          </script>
+          """
+          html=html.replace('</body>',script+'</body>',1)
+          assert 'duwm1161-verified-geometry' in html
+          assert html.count('window.__duwm1161Map = new maplibregl.Map(')==1
+          htmlfile.write_text(html,encoding='utf-8')
+
+          rail=railfile.read_text(encoding='utf-8')
+          assert rail.count('156f*rail.density')==1, '1160 rail dimensions changed unexpectedly'
+          assert rail.count('Gravity.END | Gravity.BOTTOM')>=1, 'Original signal placement missing'
+          rail=rail.replace('156f*rail.density','116f*rail.density',1)
+          rail=rail.replace('Gravity.END | Gravity.BOTTOM','Gravity.END | Gravity.TOP',1)
+          railfile.write_text(rail,encoding='utf-8')
+
+          g=gradle.read_text(encoding='utf-8')
+          assert g.count('versionCode = 116000')==1 and g.count('versionName = "1160"')==1
+          g=g.replace('versionCode = 116000','versionCode = 116100',1)
+          g=g.replace('versionName = "1160"','versionName = "1161"',1)
+          gradle.write_text(g,encoding='utf-8')
+          s=strings.read_text(encoding='utf-8')
+          assert 'DEVELOP.UGANDA 1160' in s
+          strings.write_text(s.replace('DEVELOP.UGANDA 1160','DEVELOP.UGANDA 1161',1),encoding='utf-8')
+          for p,sha in original_widgets.items():
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==sha, ('Protected feature overwritten',p)
+          assert '116f*rail.density' in rail and 'Gravity.END | Gravity.TOP' in rail
+          print('PASS 1161: exact original globe/widgets/share cards unchanged; real vector geometry enhanced')
+          print('PASS 1161: corner signals compact to 116dp; verified-source traces only; version 1161')
+          PY_1161_UPGRADE
+
+      - name: Build actual installable Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+          mkdir -p "$RUNNER_TEMP/duwm1161"
+          cp app/build/outputs/apk/debug/*.apk "$RUNNER_TEMP/duwm1161/DUWM-1161.apk"
+
+      - name: Verify installed bytes signature version and compiled functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/duwm1161/DUWM-1161.apk" <<'PY_1161_APK'
+          from pathlib import Path
+          import zipfile,sys,os,subprocess
+          apk=Path(sys.argv[1])
+          assert apk.is_file() and apk.stat().st_size>150000,'APK not produced'
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              dex=b''.join(z.read(name) for name in z.namelist() if name.endswith('.dex'))
+              for token in (b'DuwmPlaceMapActivity',b'DuwmGeoObservationStore',
+                            b'DuwmSignalRail',b'V115941ShareCards',b'OperationsGlobeView',
+                            b'DuWidgetProviders',b'PulseDataActivity',
+                            b'SHARE SELECTED VERIFIED DATA POINT'):
+                  assert token in dex,('Missing compiled feature',token)
+              html=z.read('assets/duwm_place_map.html')
+              for token in (b'window.duwmReceive',b'duwm-road-halo',
+                            b'duwm-route-core',b'duwm1161-professional-map',
+                            b'duwm1161-verified-geometry'):
+                  assert token in html,('1161 map source missing in packaged APK',token)
+          sdk=Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(sdk/'apksigner'),'verify',str(apk)],check=True)
+          badge=subprocess.check_output([str(sdk/'aapt'),'dump','badging',str(apk)],text=True)
+          assert "versionCode='116100'" in badge and "versionName='1161'" in badge
+          assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in badge
+          print('PASS: signed installable 1161 APK with real map visuals, source cards, unchanged widgets')
+          PY_1161_APK
+
+      - name: Upload 1161 APK artifact even if emulator validation later fails
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1161-INSTALLABLE-APK
+          path: ${{ runner.temp }}/duwm1161/DUWM-1161.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Set Android emulator KVM device permissions
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Smoke test 1161 on emulator and save visual proof
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -euo pipefail
+            adb install -r "$RUNNER_TEMP/duwm1161/DUWM-1161.apk"
+            adb shell am start -n com.sentongoharuna.worldsituationroom.rb2live25/com.sentongoharuna.worldsituationroom.DuwmPlaceMapActivity
+            sleep 10
+            adb shell uiautomator dump /sdcard/duwm1161.xml >/dev/null
+            adb shell cat /sdcard/duwm1161.xml > "$RUNNER_TEMP/duwm1161/screen.xml"
+            adb exec-out screencap -p > "$RUNNER_TEMP/duwm1161/actual-screen.png"
+            test -s "$RUNNER_TEMP/duwm1161/actual-screen.png"
+            grep -q 'PLACE INTELLIGENCE' "$RUNNER_TEMP/duwm1161/screen.xml"
+            ! adb logcat -d -t 4500 | grep -A7 'FATAL EXCEPTION' | grep -q 'com.sentongoharuna.worldsituationroom'
+            echo "PASS 1161 emulator: actual map activity launches and screenshot saved"
+
+      - name: Upload evidence screenshot and UI tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1161-ANDROID-SCREENSHOT-EVIDENCE
+          path: |
+            ${{ runner.temp }}/duwm1161/actual-screen.png
+            ${{ runner.temp }}/duwm1161/screen.xml
+          retention-days: 30
+          if-no-files-found: warn
