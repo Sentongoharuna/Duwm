@@ -786,7 +786,24 @@ jobs:
             assert s in a, ('Observation selection, share or map deep-link not preserved',s)
         assert 'new Intent(this,DuwmPlaceMapActivity.class)' in a
         assert 'originalEarth' in a and 'switchOriginalRenderer' in a
-        assert 'DuwmWorldIntelligenceActivity.class' in a, 'P1 worldwide dashboard lost'
+        # P1 deliberately exposes its worldwide dashboard through the geographic map screen.
+        # Verify that real entry point and manifest instead of demanding an unrelated
+        # shortcut in OperationsMainActivity. Do not manufacture a nav reference to pass CI.
+        from xml.etree import ElementTree as ET
+        world_file=pkg/'DuwmWorldIntelligenceActivity.java'
+        map_file=pkg/'DuwmPlaceMapActivity.java'
+        assert world_file.is_file(), 'P1 worldwide dashboard Java source missing'
+        assert map_file.is_file(), 'P1 geographic navigation source missing'
+        world=world_file.read_text(encoding='utf-8')
+        geo=map_file.read_text(encoding='utf-8')
+        assert 'class DuwmWorldIntelligenceActivity' in world and 'loadAircraft()' in world and 'loadMarkets()' in world, 'P1 worldwide dashboard implementation incomplete'
+        assert 'new Intent(this,DuwmWorldIntelligenceActivity.class)' in geo, 'P1 map-to-dashboard navigation missing'
+        assert 'WORLD INTELLIGENCE' in geo, 'P1 dashboard entry point is not visibly labeled'
+        manifest=ET.parse(root/'app/src/main/AndroidManifest.xml').getroot()
+        android='{http://schemas.android.com/apk/res/android}'
+        registered=[node.get(android+'name','') for node in manifest.iter('activity')]
+        assert any(name.endswith('.DuwmWorldIntelligenceActivity') for name in registered), 'P1 dashboard Activity not registered in manifest'
+        assert any(name.endswith('.DuwmPlaceMapActivity') for name in registered), 'P2 geographic Activity not registered in manifest'
         assert (root/'app/src/main/assets/duwm_place_map.html').is_file(), 'P2 geographic map asset lost'
         assert 'versionCode = 116200' in (root/'app/build.gradle.kts').read_text()
         assert (pkg/'DuwmLiveWallpaperService.java').is_file()
