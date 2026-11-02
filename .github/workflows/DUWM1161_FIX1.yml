@@ -1,0 +1,176 @@
+name: "DUWM 1161 FIX1 | Professional Living Maps + Verified Signals"
+run-name: "DUWM 1161 | Preserve RB2 | Repair Actions validation + Bash emulator"
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/DUWM-1161-MAP-INTELLIGENCE-FIX1.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: "Build + verify actual DUWM 1161 APK"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout actual DUWM source and existing 1161 implementation
+        uses: actions/checkout@v4
+
+      - name: Checkout original protected RUNNINGBALL2 source
+        uses: actions/checkout@v4
+        with:
+          repository: Sentongoharuna/Du-World-Situation-Room-
+          ref: 7d952dd607cdeec94832896023c10203425a3b7f
+          path: rb2-original-source
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+
+      - name: Install pinned PyYAML
+        run: python3 -m pip install --disable-pip-version-check 'PyYAML==6.0.3'
+
+      - name: Reuse full original 1161 build stages from checked-in source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_REUSE_EXISTING_1161'
+          import os
+          import subprocess
+          import tempfile
+          from pathlib import Path
+          import yaml
+
+          workflow_path = Path('.github/workflows/DUWM-1161-MAP-INTELLIGENCE-APK.yml')
+          assert workflow_path.is_file(), 'Existing 1161 implementation missing; refusing an empty substitute APK'
+          baseline = Path('.github/workflows/DUWM1160-MAPS.yml')
+          assert baseline.is_file(), '1160 actual-map baseline missing'
+          steps = yaml.safe_load(workflow_path.read_text(encoding='utf-8'))['jobs']['build']['steps']
+          names = [step.get('name', '') for step in steps]
+          source_names = [
+              'Rebuild verified original widgets and all functional 1160 map source steps',
+              'Apply 1161 professional map visual upgrades and compact corner signal chip',
+              'Build actual installable Android APK',
+              'Verify installed bytes signature version and compiled functions',
+          ]
+          for label in source_names:
+              assert names.count(label) == 1, ('1161 implementation unexpectedly changed', label)
+
+          workspace = Path(os.environ['GITHUB_WORKSPACE'])
+          temporary = Path(os.environ['RUNNER_TEMP'])
+          envfile = Path(os.environ['GITHUB_ENV'])
+          env = os.environ.copy()
+          for label in source_names:
+              item = next(step for step in steps if step.get('name') == label)
+              script = item.get('run')
+              assert isinstance(script, str) and 100 < len(script) < 200000, ('Invalid source stage', label)
+              # Source text is executed from a Bash file, not evaluated as GitHub Actions YAML.
+              # This intentionally preserves the original literal expression-safety guard.
+              with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', prefix='duwm1161-stage-',
+                                               dir=temporary, delete=False) as out:
+                  out.write(script)
+                  source_file = Path(out.name)
+              print('EXECUTE FULL 1161 STAGE:', label, flush=True)
+              try:
+                  result = subprocess.run(['bash', '-eo', 'pipefail', str(source_file)],
+                                          cwd=workspace, env=env, check=False)
+                  assert result.returncode == 0, ('1161 stage failed', label, result.returncode)
+              finally:
+                  source_file.unlink(missing_ok=True)
+              # Recreate the next-stage runner environment exactly as GitHub does.
+              if envfile.exists():
+                  for line in envfile.read_text(encoding='utf-8').splitlines():
+                      if '=' in line:
+                          key, value = line.split('=', 1)
+                          if key.isidentifier():
+                              env[key] = value
+
+          output = temporary / 'duwm1161' / 'DUWM-1161.apk'
+          assert output.is_file() and output.stat().st_size > 150000, 'No verified 1161 APK produced'
+          with envfile.open('a', encoding='utf-8') as stream:
+              stream.write('DUWM_1161_VERIFIED_APK=' + str(output.resolve()) + '\n')
+          print('PASS: original 1161 APK source, version, compiled features and signing gates', flush=True)
+          PY_REUSE_EXISTING_1161
+
+      - name: Upload installable 1161 APK independently of emulator outcome
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1161-INSTALLABLE-APK-FIX1
+          path: ${{ runner.temp }}/duwm1161/DUWM-1161.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Grant Android emulator KVM permissions
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Prepare Bash emulator script with real app and screenshot checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/duwm1161-smoke-test.sh" <<'BASH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="$RUNNER_TEMP/duwm1161/DUWM-1161.apk"
+          test -s "$APK"
+          adb install -r "$APK"
+          adb shell am start -n 'com.sentongoharuna.worldsituationroom.rb2live25/com.sentongoharuna.worldsituationroom.DuwmPlaceMapActivity'
+          sleep 12
+          adb shell uiautomator dump /sdcard/duwm1161.xml >/dev/null
+          adb shell cat /sdcard/duwm1161.xml > "$RUNNER_TEMP/duwm1161/screen.xml"
+          adb exec-out screencap -p > "$RUNNER_TEMP/duwm1161/actual-screen.png"
+          test -s "$RUNNER_TEMP/duwm1161/actual-screen.png"
+          # UI text can be WebView-rendered; verify that the Activity remains foreground.
+          adb shell dumpsys activity activities | grep -q 'DuwmPlaceMapActivity'
+          if adb logcat -d -t 4500 | grep -A8 'FATAL EXCEPTION' | grep -q 'com.sentongoharuna.worldsituationroom'; then
+            echo 'ERROR: app process crashed' >&2
+            exit 1
+          fi
+          echo 'PASS: 1161 map Activity is foreground, screenshot captured, no app fatal exception'
+          BASH
+          bash -n "$RUNNER_TEMP/duwm1161-smoke-test.sh"
+
+      - name: Test actual 1161 map on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: bash "$RUNNER_TEMP/duwm1161-smoke-test.sh"
+
+      - name: Upload real Android visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1161-ANDROID-EVIDENCE-FIX1
+          path: |
+            ${{ runner.temp }}/duwm1161/actual-screen.png
+            ${{ runner.temp }}/duwm1161/screen.xml
+          retention-days: 30
+          if-no-files-found: warn
