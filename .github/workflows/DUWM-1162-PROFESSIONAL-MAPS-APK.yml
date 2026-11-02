@@ -273,6 +273,30 @@ jobs:
         assert 'versionCode = 116200' in (root/'app/build.gradle.kts').read_text()
         print('PASS: 1162 map JavaScript, manifest, cards, versions and source-based route layers')
         PY_1162_SOURCE_GATE
+    - name: 1162 JAVA COMPILATION FIX — remove two invalid DuwmSignalMonitor lifecycle calls
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - "$PROJECT_DIR" <<'PY_1162_MISSING_MONITOR'
+        from pathlib import Path
+        import sys
+        root=Path(sys.argv[1]);pkg=root/'app/src/main/java/com/sentongoharuna/worldsituationroom'
+        rail_file=pkg/'DuwmSignalRail.java'
+        assert rail_file.is_file(), 'Expected 1162 signal rail missing'
+        src=rail_file.read_text(encoding='utf-8')
+        resume='@Override public void onActivityResumed(Activity a) { attach(a); DuwmSignalMonitor.resumed(a); }'
+        pause='@Override public void onActivityPaused(Activity a) { DuwmSignalMonitor.paused(a); }'
+        assert src.count(resume)==1 and src.count(pause)==1, 'Missing-monitor API shape changed: refuse unsafe patch'
+        assert not (pkg/'DuwmSignalMonitor.java').exists(), 'Monitor now exists: avoid applying a stale fix'
+        # Only the two unresolved extra lifecycle calls are removed. Existing attach,
+        # incoming real-source receipt tracking, signal publisher, globe and widgets stay intact.
+        src=src.replace(resume,'@Override public void onActivityResumed(Activity a) { attach(a); }',1)
+        src=src.replace(pause,'@Override public void onActivityPaused(Activity a) { }',1)
+        assert 'DuwmSignalMonitor' not in src, 'Unresolved monitor reference remains'
+        assert 'DuwmSignalRail' in src and 'attach(a)' in src
+        rail_file.write_text(src,encoding='utf-8')
+        print('PASS: repaired two javac missing-symbol errors without altering existing signal rail or received data')
+        PY_1162_MISSING_MONITOR
     - name: 1162 | Compile signed installable Android APK
       shell: bash
       run: |
