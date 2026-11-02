@@ -1,5 +1,5 @@
-name: DUWM 1162 | Professional Regional Maps, Compact Verified Signals and Signed APK
-run-name: DUWM 1162 | Native map improvements and APK build verification
+name: DUWM 1162 | Global Intelligence and Verified Geographic Map
+run-name: DUWM 1162 | Nine real source channels / verified record map / original globe
 'on':
   workflow_dispatch: {}
   push:
@@ -297,6 +297,98 @@ jobs:
         rail_file.write_text(src,encoding='utf-8')
         print('PASS: repaired two javac missing-symbol errors without altering existing signal rail or received data')
         PY_1162_MISSING_MONITOR
+    - name: 1162 PRIORITY 1 + 2 | Install worldwide source-intelligence dashboard and real-coordinate map bridge
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PY_DUWM_INTEL_SOURCE'
+        from pathlib import Path
+        import base64,gzip,hashlib
+        encoded='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'
+        expected='b345165c5bf08e27c4da9b8c502f081784942f6f5914fb8e23055c02760d92fd'
+        raw=gzip.decompress(base64.b64decode(encoded,validate=True))
+        assert hashlib.sha256(raw).hexdigest()==expected,'Bundled intelligence source corrupted'
+        assert b'V115941ShareCards.share' in raw and b'NO SYNTHETIC' not in raw or len(raw)>15000
+        file=Path('.github/workflows/duwm1162_intelligence_source.java')
+        file.write_bytes(raw)
+        print('PASS: '+str(len(raw))+' genuine 1162 source bytes delivered to build workspace')
+        PY_DUWM_INTEL_SOURCE
+        python3 - "$PROJECT_DIR" <<'PY_DUWM_INTEL_INSTALL'
+        from pathlib import Path
+        import sys,hashlib,xml.etree.ElementTree as ET
+
+        project=Path(sys.argv[1]);main=project/'app/src/main';pkg=main/'java/com/sentongoharuna/worldsituationroom'
+        assert (pkg/'DuwmPlaceMapActivity.java').is_file(), 'Existing actual map Activity missing'
+        assert (pkg/'DuwmGeoObservationStore.java').is_file(), 'Source observation store absent'
+        assert (pkg/'V115941ShareCards.java').is_file(), 'Original sharing implementation absent'
+        assert (pkg/'OperationsGlobeView.java').is_file(), 'Original globe absent'
+        assert (main/'assets/duwm_place_map.html').is_file(), 'Existing OSM/MapLibre vector map absent'
+        # Original globe, wallpaper, widgets and branded share cards must not be modified.
+        protected=['OperationsGlobeView.java','DuwmLiveWallpaperService.java','SatelliteMapView.java','DuWidgetProviders.java','DuWidgetUpdater.java','WidgetSnapshot.java','V115941ShareCards.java']
+        prior={n:hashlib.sha256((pkg/n).read_bytes()).hexdigest() for n in protected if (pkg/n).is_file()}
+        assert len(prior)>=5, 'Protected original feature set incomplete'
+
+        activity=pkg/'DuwmWorldIntelligenceActivity.java'
+        assert not activity.exists(), 'Intelligence dashboard class already present; do not overwrite'
+        # Independent source for review and unit tests, embedded in the workflow for phone-only upload.
+        intelligence_source=Path('.github/workflows/duwm1162_intelligence_source.java')
+        # On GitHub Actions we embed a compressed verified copy instead; local file is test fallback.
+        if not intelligence_source.exists():
+            raise SystemExit('Bundled dashboard Java source was not installed before executing patch')
+        source=intelligence_source.read_text(encoding='utf-8')
+        assert 'extends Activity' in source and 'loadAircraft()' in source and 'loadMarkets()' in source
+        assert 'AIS FEED NOT CONFIGURED' in source and 'CONFLICT REPORTS' in source
+        assert source.count('class DuwmWorldIntelligenceActivity')==1
+        activity.write_text(source,encoding='utf-8')
+
+        geo=pkg/'DuwmPlaceMapActivity.java';s=geo.read_text(encoding='utf-8')
+        anchor='    cityStatus=label("KAMPALA   •   SOURCE MAP  /  NOT LIVE TRAFFIC",10,MUTED);root.addView(cityStatus);'
+        assert s.count(anchor)==1,'Map screen insertion anchor moved'
+        new_button='''    TextView intel=label("WORLD INTELLIGENCE  /  9 SOURCE CHANNELS",11,CYAN);intel.setGravity(Gravity.CENTER);panel(intel);
+            LinearLayout.LayoutParams intelParams=new LinearLayout.LayoutParams(-1,dp(39));intelParams.bottomMargin=dp(5);root.addView(intel,intelParams);
+            intel.setOnClickListener(v->startActivity(new Intent(this,DuwmWorldIntelligenceActivity.class)));
+        '''
+        s=s.replace(anchor,new_button+anchor,1)
+
+        point_anchor='  private void sendPoints(){JSONArray array=new JSONArray(),lines=new JSONArray();for(JSONObject p:reports.values())array.put(p);for(JSONObject t:traces)lines.put(t);'
+        assert s.count(point_anchor)==1,'Map source receipt serialization changed'
+        bridge='''  /** Merge only fresh actual provider coordinates from the worldwide dashboard. */
+          private java.util.List<DuwmGeoObservationStore.Fix> mergeWorldwidePositions(){
+            java.util.List<DuwmGeoObservationStore.Fix> actual=DuwmGeoObservationStore.read(this);
+            long now=System.currentTimeMillis();
+            for(DuwmGeoObservationStore.Fix f:actual){
+              if(f.sourceTime<=0||now-f.sourceTime>3600000L||now-f.receivedAt>3600000L)continue;
+              if(!f.type.equals("AIRCRAFT")&&!f.type.equals("EARTHQUAKE")&&!f.type.equals("ISS"))continue;
+              if(!reports.containsKey(f.id))put(reports,f.id,f.type,f.title,f.detail,f.provider,f.url,f.sourceTime,f.lat,f.lon);
+            }
+            return actual;
+          }
+        '''
+        replace='''  private void sendPoints(){java.util.List<DuwmGeoObservationStore.Fix> worldwide=mergeWorldwidePositions();
+            JSONArray array=new JSONArray(),lines=new JSONArray();for(JSONObject p:reports.values())array.put(p);for(JSONObject t:traces)lines.put(t);
+            long now=System.currentTimeMillis();for(DuwmGeoObservationStore.Fix f:worldwide){
+              if(!f.hasActualTrack()||now-f.receivedAt>900000L)continue;
+              JSONObject tr=new JSONObject();try{tr.put("id",f.id);tr.put("kind",f.type);tr.put("lat1",f.oldLat);tr.put("lon1",f.oldLon);
+                tr.put("lat2",f.lat);tr.put("lon2",f.lon);tr.put("from",f.oldTime);tr.put("to",f.sourceTime);lines.put(tr);
+              }catch(Exception ignored){}
+            }
+        '''
+        s=s.replace(point_anchor,bridge+replace,1)
+        assert 'mergeWorldwidePositions()' in s and 'DuwmWorldIntelligenceActivity.class' in s
+        geo.write_text(s,encoding='utf-8')
+
+        manifest=main/'AndroidManifest.xml';A='{http://schemas.android.com/apk/res/android}'
+        ET.register_namespace('android','http://schemas.android.com/apk/res/android')
+        tree=ET.parse(manifest);app=tree.getroot().find('application')
+        assert app is not None
+        assert not any('DuwmWorldIntelligenceActivity' in a.get(A+'name','') for a in app.findall('activity'))
+        ET.SubElement(app,'activity',{A+'name':'.DuwmWorldIntelligenceActivity',A+'exported':'false',A+'label':'World Intelligence'})
+        tree.write(manifest,encoding='utf-8',xml_declaration=True)
+
+        for n,digest in prior.items():
+            assert hashlib.sha256((pkg/n).read_bytes()).hexdigest()==digest,('Accidentally modified protected app component',n)
+        print('PASS: 9-category source receipt dashboard, map deep links, source-only observed trails, original globe untouched')
+        PY_DUWM_INTEL_INSTALL
     - name: 1162 | Compile signed installable Android APK
       shell: bash
       run: |
@@ -338,6 +430,32 @@ jobs:
         assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in badge
         print('PASS: signed installable 1162 APK with real map visuals, source cards, unchanged widgets')
         PY_1162_APK
+    - name: 1162 PRIORITY 1 + 2 | Verify dashboard, map bridge, and preserved globe in compiled APK
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - "$PROJECT_DIR" "$RUNNER_TEMP/duwm1162/DUWM-1162.apk" <<'PY_DUWM_GLOBAL_VERIFY'
+        from pathlib import Path
+        import sys,zipfile
+        root,apk=map(Path,sys.argv[1:])
+        classfile=root/'app/src/main/java/com/sentongoharuna/worldsituationroom/DuwmWorldIntelligenceActivity.java'
+        mapfile=root/'app/src/main/java/com/sentongoharuna/worldsituationroom/DuwmPlaceMapActivity.java'
+        assert classfile.is_file() and mapfile.is_file(), 'Dashboard/map source absent after build'
+        s=classfile.read_text(encoding='utf-8')
+        for token in ('loadAircraft()','loadISS()','loadQuakes()','loadWeather()','loadGdelt(true)','loadGdelt(false)',
+                      'loadMarkets()','loadDisasters()','AIS FEED NOT CONFIGURED','V115941ShareCards.share'):
+            assert token in s,('Required source-backed channel missing',token)
+        assert 'DuwmGeoObservationStore.read(this)' in mapfile.read_text(), 'Map is not connected to worldwide observed positions'
+        assert apk.is_file() and apk.stat().st_size>150000, 'Built APK missing'
+        with zipfile.ZipFile(apk) as z:
+            assert z.testzip() is None,'APK archive damaged'
+            dex=b''.join(z.read(n) for n in z.namelist() if n.endswith('.dex'))
+            for token in (b'DuwmWorldIntelligenceActivity',b'DuwmPlaceMapActivity',b'V115941ShareCards',
+                          b'DuwmGeoObservationStore',b'OperationsGlobeView',b'DuWidgetProviders'):
+                assert token in dex,('Compiled feature missing in final APK',token)
+            assert 'assets/duwm_place_map.html' in z.namelist(), 'Existing geographic map missing'
+        print('PASS: compiled APK contains nine-category source dashboard, real point map bridge, original globe and widgets')
+        PY_DUWM_GLOBAL_VERIFY
     - name: Publish genuine 1162 APK artifact only after signed APK validation
       uses: actions/upload-artifact@v4
       with:
