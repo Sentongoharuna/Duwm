@@ -1,4 +1,5 @@
-name: RUNNINGBALL2 V1159.4/1 - ADVANCED SOURCE DATA SHARE CARDS
+name: '1159.4/1 Share cards must look advanced'
+run-name: '1159.4/1 Share cards must look advanced'
 permissions:
   contents: write
 jobs:
@@ -2145,5 +2146,5 @@ jobs:
     branches:
     - main
     paths:
-    - .github/workflows/RUNNINGBALL2_V1159.4_1_ADVANCED_SHARE_CARDS.yaml
+    - .github/workflows/RUNNINGBALL2-V1159.4-1-SHARE-CARDS.yml
   workflow_dispatch: {}
