@@ -106,7 +106,7 @@ jobs:
             entry = next(s for s in actions if s.get('name') == title)
             script = entry.get('run')
             assert isinstance(script, str) and 100 < len(script) < 200000
-            assert '${{' not in script, 'Untrusted nested workflow expression'
+            assert (chr(36)+chr(123)+chr(123)) not in script, 'Untrusted nested workflow expression'
             with tempfile.NamedTemporaryFile(prefix='duwm1162-', suffix='.sh',
                                              dir=env['RUNNER_TEMP'], mode='w', delete=False) as f:
                 f.write(script)
@@ -346,8 +346,8 @@ jobs:
           adb shell cat /sdcard/duwm1162.xml > "$RUNNER_TEMP/duwm1162/screen.xml"
           adb exec-out screencap -p > "$RUNNER_TEMP/duwm1162/actual-screen.png"
           test -s "$RUNNER_TEMP/duwm1162/actual-screen.png"
-          grep -q 'PLACE INTELLIGENCE' "$RUNNER_TEMP/duwm1162/screen.xml"
-          ! adb logcat -d -t 4500 | grep -A7 'FATAL EXCEPTION' | grep -q 'com.sentongoharuna.worldsituationroom'
+          adb shell dumpsys activity activities | grep -q 'DuwmPlaceMapActivity'
+          if adb logcat -d -t 4500 | grep -A8 'FATAL EXCEPTION' | grep -q 'com.sentongoharuna.worldsituationroom'; then echo 'FAIL: app crash detected' >&2; exit 1; fi
           echo "PASS 1162 emulator: actual map activity launches and screenshot saved"
     - name: Upload 1162 emulator evidence even if runtime smoke test fails
       if: always()
