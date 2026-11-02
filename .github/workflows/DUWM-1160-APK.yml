@@ -1,4 +1,4 @@
-name: DUWM 1160 - Original Widget Style, Real Moving Data, Share Every Record
+name: DUWM 1160 - Original Widget Style + Eight Signal Lights + Real Data Sharing
 'on':
   push:
     branches:
@@ -210,6 +210,67 @@ jobs:
         \ Hazards Program','BBC News RSS','Where The ISS At','SOURCE TIME UNKNOWN','NO VERIFIED RECORDS'))\nprint('PASS\
         \ V1160 source: interactive radar, provider-driven motion, individual shareable records, coloured signals,\
         \ source-truth timeline, original widgets untouched')\nPY_DUWM_1160_INSTALL"
+    - name: DUWM 1160 install 8-color incoming signal lights across every screen
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'PY_DUWM_1160_SIGNALS'\nfrom pathlib import Path\nimport\
+        \ sys,xml.etree.ElementTree as ET,hashlib,gzip,base64\nroot=Path(sys.argv[1]);main=root/'app/src/main'\npkg=main/'java/com/sentongoharuna/worldsituationroom'\n\
+        res=main/'res'\nassert pkg.is_dir(), 'Original Android package missing'\n# Preserve every home-screen widget,\
+        \ unchanged original globe, wallpaper, and all existing share flows.\nwidget_names=['DuWidgetProviders.java','DuWidgetUpdater.java','WidgetSnapshot.java','WidgetRefreshScheduler.java']\n\
+        protected_names=widget_names+['SatelliteMapView.java','DuwmLiveWallpaperService.java',\n                 \
+        \            'OperationsGlobeView.java','V115941ShareCards.java',\n                             'OperationsMainActivity.java','MediaDeskActivity.java',\n\
+        \                             'AircraftOperationsActivity.java','WorldSourceHubActivity.java']\nbefore={n:hashlib.sha256((pkg/n).read_bytes()).hexdigest()\
+        \ for n in protected_names if (pkg/n).is_file()}\nwidget_xml={str(p):hashlib.sha256(p.read_bytes()).hexdigest()\
+        \ for p in res.rglob('*') if p.is_file() and 'widget' in p.name.lower()}\nassert (pkg/'V115941ShareCards.java').is_file(),\
+        \ 'Per-point card renderer was not retained'\npayloads={'DuwmSignalRail.java': ('4e7a2af74fecd23bbcc6ad5febaea018206d7f5aeb6a607b714371b08243e930',\n\
+        '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'),\n\
+        'DuwmSignalProvider.java': ('62fef27cafffc1995b404f054cd67a46a0ad20d49f0b92ed93ed2c21fddd12e5',\n'H4sIAAAAAAAC/51TwW7bMAy95yt4dILN3XlBsQXZZcCADuu2y7CDIjMOO0XSKCppNvTfRzt26qZJV9QXQdTjI98jHY39ZWoEG9ZlQi/B12FlOHtTbgO7KpFkIxQ8h7Cejka0joEFjK84UFWaGMtZjI5sC5oev9vgRVnL+f78zGFDFfL/cN+Ny5ieRt3Ko/fKiFmYhOU8cwqPq3iU8huTyriYTOCjJyHj6A8mkBWCce51sozoIVHtjQM25GBLsgpZgDE6Y8nXSrcDvKUkzWWgHqwzKZUwuRjFvNAoLKmhacPwIW/X1y1v74KSqJwqwZE78HcE8P5qg8x6hY5rEYJD4yH4OaMRLMYtDqBzA2x3XkKN0gWL8bTF0BKKw/sl+OzcWBVJZg9L4xLuYUMxOlql6pPIJzHeYlgOQW2Sfu+gGETHfdLbk+FS2xuET3Talj7fZbN0jLUOAHlmhTYku0+0RLuzDuc6xoUudSo8bgemf9FZlgdUMe7KdezCuSW/O+X8fpvgd0beFbo/kJlewbWwzv/HT4gcbtA2UvogJHRdpHfo7HegOeTMuE73TLq/V6xLodPum218mZ5utctSh7/uIvbNPi+3AeuYkeVe5IP/ETbt8Tw28gKVShI8tmzgzhn1gwpvnqDPsTJD+lPNvrzo3egfDx0PExwFAAA='),\n\
+        'DuwmSignalMonitor.java': ('f3dd4432ea1dd68c33619871f98b610920de85d894ef1f0047dde33ac136e7f6',\n'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')}\n\
+        for name,(sha,encoded) in payloads.items():\n    java=gzip.decompress(base64.b64decode(encoded,validate=True))\n\
+        \    assert hashlib.sha256(java).hexdigest()==sha,('Signal source checksum mismatch',name)\n    assert not\
+        \ (pkg/name).exists(),('Signal source already installed',name)\n    (pkg/name).write_bytes(java)\n\n# Wire\
+        \ only the received source receipts into the lights. No artificial network results.\npulse=pkg/'PulseDataActivity.java'\n\
+        s=pulse.read_text(encoding='utf-8')\ndef once(anchor,replace,label):\n    global s\n    assert s.count(anchor)==1,('Unexpected\
+        \ Pulse source change',label,s.count(anchor))\n    s=s.replace(anchor,replace,1)\nonce('        long now=System.currentTimeMillis();freshCount=0;',\n\
+        \     '        long now=System.currentTimeMillis();freshCount=0;\\n'\n     '        boolean movingPoint=false,recentNewQuake=false,newNews=false;',\
+        \ 'state snapshot')\nonce('            p.oldX=(float)(prior.longitude/180d);p.oldY=(float)(prior.latitude/90d);p.moveStarted=now;',\n\
+        \     '            p.oldX=(float)(prior.longitude/180d);p.oldY=(float)(prior.latitude/90d);p.moveStarted=now;\\\
+        n'\n     '            movingPoint=true;', 'real observed movement')\nonce('          if(!seen.contains(p.id)){freshCount++;seen.add(p.id);}',\n\
+        \     '''          if(!seen.contains(p.id)){\n            freshCount++;seen.add(p.id);\n            // ALERT\
+        \ may light only for a newly received quake with a recent provider timestamp.\n            if(p.kind.equals(\"\
+        EARTHQUAKE\") && p.time>0 && p.time<=now && now-p.time<900000L)\n              recentNewQuake=true;\n    \
+        \        if(p.kind.equals(\"NEWS\"))newNews=true;\n          }''', 'genuine new event detection')\nonce('\
+        \        loading=false;drawAll();',\n     '        DuwmSignalRail.publishPulse(this,state,movingPoint,recentNewQuake,newNews,freshCount>0,now);\\\
+        n'\n     '        loading=false;drawAll();', 'verified receipt publisher')\nonce('    add(root,label(\"SOURCE-DRIVEN\
+        \ RADAR  •  EVERY RECORD SHAREABLE\",11,MUTED));',\n     '''    add(root,label(\"SOURCE-DRIVEN RADAR  •  EVERY\
+        \ RECORD SHAREABLE\",11,MUTED));\n    add(root,label(\"SIGNAL LIGHTS  /  COLOUR KEY\\\\nRED alert  •  ORANGE\
+        \ traffic  •  YELLOW satellite  •  GREEN verified\\\\nBLUE vessel/weather  •  CYAN incoming feed  •  PURPLE\
+        \ intelligence  •  WHITE system\\\\nBright = recent real receipt; blinking = a genuine new arrival/change;\
+        \ dim = no confirmed data. Tap an LED to share its actual status.\",10,MUTED));''', 'visible eight-category\
+        \ legend')\nonce('DEVELOP.UGANDA-World-Monitor/1159.4-2',\n     'DEVELOP.UGANDA-World-Monitor/1160', 'versioned\
+        \ source user-agent')\npulse.write_text(s,encoding='utf-8')\n\n# A private startup provider registers one\
+        \ lifecycle observer for ALL Activities.\n# It does not replace the app's Application class or the original\
+        \ widget receivers.\nmanifest=main/'AndroidManifest.xml'\nET.register_namespace('android','http://schemas.android.com/apk/res/android')\n\
+        tree=ET.parse(manifest);app=tree.getroot().find('application')\nassert app is not None\nA='{http://schemas.android.com/apk/res/android}'\n\
+        original_receivers=[ET.tostring(n,encoding='unicode') for n in app.findall('receiver')]\noriginal_activities=[ET.tostring(n,encoding='unicode')\
+        \ for n in app.findall('activity')]\nexisting_provider=[n.get(A+'name','') for n in app.findall('provider')]\n\
+        assert not any('DuwmSignalProvider' in p for p in existing_provider), 'Signal initializer already present'\n\
+        ET.SubElement(app,'provider',{A+'name':'.DuwmSignalProvider',\n                              A+'authorities':'com.sentongoharuna.worldsituationroom.rb2live25.signals1160',\n\
+        \                              A+'exported':'false'})\nassert [ET.tostring(n,encoding='unicode') for n in\
+        \ app.findall('receiver')]==original_receivers\nassert [ET.tostring(n,encoding='unicode') for n in app.findall('activity')]==original_activities\n\
+        tree.write(manifest,encoding='utf-8',xml_declaration=True)\nfor name,sha in before.items():\n    assert hashlib.sha256((pkg/name).read_bytes()).hexdigest()==sha,('Protected\
+        \ feature changed',name)\nfor path,sha in widget_xml.items():\n    assert hashlib.sha256(Path(path).read_bytes()).hexdigest()==sha,('Original\
+        \ widget UI changed',path)\nrail=(pkg/'DuwmSignalRail.java').read_text(encoding='utf-8')\nassert all(x in\
+        \ rail for x in ['RED: alert','ORANGE: observed traffic movement','YELLOW: observed satellite',\n        \
+        \                      'GREEN: verified received source','BLUE: vessel/weather','CYAN: communications/incoming\
+        \ feed',\n                              'PURPLE: news/intelligence','WHITE: app/system active',\n        \
+        \                      'onActivityResumed(Activity a) { attach(a); DuwmSignalMonitor.resumed(a); }',\n   \
+        \                           'publishPulse(', 'publishVerifiedReceipt(', 'V115941ShareCards.share'])\nmonitor=(pkg/'DuwmSignalMonitor.java').read_text(encoding='utf-8')\n\
+        assert all(t in monitor for t in ['opensky-network.org/api/states/all', 'earthquake.usgs.gov',\n         \
+        \                         'api.wheretheiss.at', 'feeds.bbci.co.uk', 'DuwmSignalRail.publishPulse',\n     \
+        \                             'source-led-refresh', 'Response too large'])\nassert 'DuwmSignalRail.publishPulse(this,state,movingPoint,recentNewQuake,newNews,freshCount>0,now);'\
+        \ in s\nassert 'android:exported' in manifest.read_text() and 'signals1160' in manifest.read_text()\nprint('PASS\
+        \ DUWM 1160: 8 original-style lights on every Activity, actual receipts / status changes only; no added widget\
+        \ or demo data; every LED shareable')\nPY_DUWM_1160_SIGNALS"
     - name: Compile complete Android APK
       shell: bash
       run: 'set -euo pipefail
@@ -235,7 +296,13 @@ jobs:
         subprocess.run([str(tools/'apksigner'),'verify',str(apk)],check=True)\nbadge=subprocess.check_output([str(tools/'aapt'),'dump','badging',str(apk)],text=True)\n\
         assert \"versionCode='116000'\" in badge and \"1160\" in badge,badge[:300]\nassert \"name='com.sentongoharuna.worldsituationroom.rb2live25'\"\
         \ in badge\nprint('PASS real signed Android APK with radar, data cards, source truth and unchanged application\
-        \ identity')\nPY_DUWM_VERIFY"
+        \ identity')\nPY_DUWM_VERIFY\npython3 - \"$RUNNER_TEMP/release/DEVELOP-UGANDA-1160.apk\" <<'PY_DUWM_SIGNAL_APK'\n\
+        import sys,zipfile\nwith zipfile.ZipFile(sys.argv[1]) as z:\n    assert z.testzip() is None\n    dex=b''.join(z.read(n)\
+        \ for n in z.namelist() if n.endswith('.dex'))\n    for symbol in (b'DuwmSignalRail',b'DuwmSignalProvider',b'DuwmSignalMonitor',b'DUWM\
+        \ 1160',\n                   b'V115941ShareCards',b'PulseDataActivity',b'publishVerifiedReceipt',\n      \
+        \             b'SIGNAL LIGHTS',b'NO RECENT VERIFIED SOURCE RECEIPT'):\n        assert symbol in dex,('Signal\
+        \ system not compiled in APK',symbol)\nprint('PASS: compiled APK includes all-screen source-driven signal\
+        \ rail, shareable LEDs, and original renderer')\nPY_DUWM_SIGNAL_APK\n"
     - name: Upload installable DUWM 1160 APK before emulator tests
       uses: actions/upload-artifact@v4
       with:
@@ -286,7 +353,21 @@ jobs:
           if adb logcat -d -t 3000 | grep -E ''FATAL EXCEPTION.*|Process: com.sentongoharuna.worldsituationroom.rb2live25''
           | tail -n 10; then true;fi
 
-          echo ''PASS Android emulator: new source-driven radar opens and individual share controls visible'' '
+          echo ''PASS Android emulator: new source-driven radar opens and individual share controls visible''
+
+          # The Activity lifecycle provider must add the source-truth LED rail on every Activity.
+
+          adb shell uiautomator dump /sdcard/duwm1160-led.xml >/dev/null
+
+          adb shell cat /sdcard/duwm1160-led.xml > "$RUNNER_TEMP/duwm-1160-led.xml"
+
+          grep -q ''SIGNAL LIGHTS'' "$RUNNER_TEMP/duwm-1160-led.xml"
+
+          grep -q ''RED ALERT'' "$RUNNER_TEMP/duwm-1160-led.xml"
+
+          echo ''PASS emulator: eight-colour all-screen signal rail visible and accessible''
+
+          '
     - name: Upload real Android screenshot and UI evidence
       if: always()
       uses: actions/upload-artifact@v4
@@ -294,8 +375,10 @@ jobs:
         name: DEVELOP-UGANDA-1160-ANDROID-EVIDENCE
         path: '${{ runner.temp }}/duwm-116000-visuals.png
 
-          ${{ runner.temp }}/duwm-116000-ui.xml'
+          ${{ runner.temp }}/duwm-116000-ui.xml
+
+          ${{ runner.temp }}/duwm-1160-led.xml'
         if-no-files-found: warn
         retention-days: 30
     name: Build and verify original-scope 1160 APK
-run-name: DUWM 1160 APK - Real Data Motion + Every Record Shareable
+run-name: DUWM 1160 | 8 signal colours | per-point share | original widget style
