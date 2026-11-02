@@ -1,0 +1,301 @@
+name: DUWM 1160 - Original Widget Style, Real Moving Data, Share Every Record
+'on':
+  push:
+    branches:
+    - main
+    paths:
+    - .github/workflows/DUWM-1160-APK.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+    - name: Checkout DUWM unchanged source
+      uses: actions/checkout@v4
+    - name: Read original protected RUNNINGBALL2 source
+      uses: actions/checkout@v4
+      with:
+        repository: Sentongoharuna/Du-World-Situation-Room-
+        ref: 7d952dd607cdeec94832896023c10203425a3b7f
+        path: rb2-original-source
+        persist-credentials: false
+    - name: Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Gradle 8.13
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: '8.13'
+        cache-disabled: true
+    - name: Read verified workflow source (PyYAML)
+      run: python3 -m pip install --no-cache-dir PyYAML==6.0.3
+    - name: Preflight 1160 source, unchanged widgets, real moving data and share cards
+      shell: bash
+      run: "set -euo pipefail\npython3 - <<'PY_1160_PREFLIGHT'\nfrom pathlib import Path\nimport yaml,ast,base64,gzip,hashlib,re\n\
+        wf=yaml.safe_load(Path('.github/workflows/DUWM-1160-APK.yml').read_text())\nsteps=wf['jobs']['build']['steps']\n\
+        installer=next(s['run'] for s in steps if s['name']=='Install DUWM 1160 individual sharing and genuine moving\
+        \ data visualizations')\nbody=re.search(r\"<<'PY_DUWM_1160_INSTALL'\\n(.*?)\\nPY_DUWM_1160_INSTALL\",installer,re.S).group(1)\n\
+        ast.parse(body)\nvalues={}\nnode=next(n for n in ast.parse(body).body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name)\
+        \ and t.id=='encoded' for t in n.targets))\npayload=ast.literal_eval(node.value)\nsource=gzip.decompress(base64.b64decode(payload,validate=True))\n\
+        assert hashlib.sha256(source).hexdigest()=='600e6ef19a5cd52b911051271314b6562c90a72f1f09bd8ffa6300fae865adb9'\n\
+        java=source.decode()\nfor signature in ('V115941ShareCards.share','postInvalidateDelayed(33)','OpenSky Network','USGS\
+        \ Earthquake Hazards Program','BBC News RSS','Where The ISS At'):\n assert signature in java,signature\nassert\
+        \ '1160' in wf['name']\nassert any('Rebuild original 1159.4/1 app without adding any new widgets' in s['name']\
+        \ for s in steps)\nassert any('Verify signed APK actual compiled DEX and correct version' == s['name'] for\
+        \ s in steps)\nprint('PASS: immutable Android source, original widget preservation, individual sharing and\
+        \ source-driven visuals')\nPY_1160_PREFLIGHT"
+    - name: Rebuild intact 1159.4/1 baseline without adding or replacing widgets
+      shell: bash
+      run: "set -euo pipefail\npython3 - <<'PY_DUWM_BASE'\nfrom pathlib import Path\nimport os,subprocess,tempfile,yaml\n\
+        source=Path('.github/workflows/RUNNINGBALL2-V1159.4-1-SHARE-CARDS.yml')\nassert source.is_file(), 'Verified\
+        \ inherited 1159.4/1 source workflow missing'\nwf=yaml.safe_load(source.read_text(encoding='utf-8'))\nsteps=wf['jobs']['build']['steps']\n\
+        assert len(steps)>=64 and steps[6]['name'].startswith('Rebuild full V109 native app')\nassert 'V1159.4/1 INSTALL\
+        \ advanced branded share cards on every source record' in steps[41]['name']\nassert 'set Android version 1159.4/1'\
+        \ in steps[42]['name']\nassert all('run' in x and 'uses' not in x for x in steps[6:43]), 'Unexpected inherited\
+        \ action instead of source generation'\nworkspace=Path(os.environ['GITHUB_WORKSPACE']); env=os.environ.copy();\
+        \ marker=Path(env['GITHUB_ENV'])\nfor index in range(6,43):\n    step=steps[index]; script=step['run']; title=step['name']\n\
+        \    assert isinstance(script,str) and len(script)<250000 and (chr(36)+chr(123)+chr(123)) not in script, ('Unsafe/incomplete\
+        \ source script',title)\n    print('INHERITED SOURCE STEP',index+1,title,flush=True)\n    with tempfile.NamedTemporaryFile(prefix='duwm1160-',suffix='.sh',dir=env['RUNNER_TEMP'],mode='w',delete=False)\
+        \ as f:\n        f.write(script); fn=Path(f.name)\n    try:\n        p=subprocess.run(['bash','-eo','pipefail',str(fn)],cwd=workspace,env=env,check=False)\n\
+        \    finally:\n        fn.unlink(missing_ok=True)\n    if p.returncode:raise SystemExit('Inherited source\
+        \ generation failed at '+title+' code '+str(p.returncode))\n    if marker.exists():\n        for line in marker.read_text().splitlines():\n\
+        \            if '=' in line:\n                key,value=line.split('=',1)\n                if key.isidentifier():env[key]=value\n\
+        project=Path(env.get('PROJECT_DIR',''))\nassert project.is_dir() and (project/'app/build.gradle.kts').is_file(),'Original\
+        \ Android source generation incomplete'\nassert (project/'app/src/main/java/com/sentongoharuna/worldsituationroom/V115941ShareCards.java').is_file(),'Existing\
+        \ original share card renderer missing'\nwith marker.open('a') as f:f.write('PROJECT_DIR='+str(project.resolve())+'\\\
+        n')\nprint('PASS complete genuine 1159.4/1 app baseline, protected original widgets and branded record sharing',flush=True)\n\
+        PY_DUWM_BASE"
+    - name: Install DUWM 1160 individual sharing and genuine moving data visualizations
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" <<'PY_DUWM_1160_INSTALL'\nfrom pathlib import Path\nimport\
+        \ base64,gzip,hashlib,re,sys,xml.etree.ElementTree as ET\nroot=Path(sys.argv[1]);src=root/'app/src/main';pkg=src/'java/com/sentongoharuna/worldsituationroom'\n\
+        assert pkg.is_dir() and (pkg/'OperationsMainActivity.java').is_file()\n# Exact tested source bytes, no new\
+        \ home widgets or third-party design assets.\nencoded=(\n    'H4sIALen6GoC/8U87XLbSI7/8xQdVm2WtGnKcuzEtszMKbYc60aWvJKcTHYml6JE2uJaIrkkJUfruOqe5X7cg92THID+YFOiHO/MXl1qxiL7A4'\n\
+        \    '1GA2gAjWbije+824CN45mTBVEeR7fxxEvnkefcx+nUz8J87uVhHKVxPGu8eBHOkjjNmRf5aRz6jpckTnOch4swXzZWK+PMeT+P/GlQVXPhYU1a'\n\
+        \    'VdWJ46SiZhxHOWDotOlnrfo29ZJJOM6cUy9aeNkT9fE0TjdXX3nhU9D7wTg/X6tehMG98yH1KulAlZcxUrG1qEKdGnyEP2s196F/G+RAxhxWZl'\n\
+        \    'NtJ4wCL+14y3ieb2ozGKfxdPrUGMPgW16q/5u38Jwwdt4v86CZpt6yN8+TeT7I08CbrbVqRxvqIoB9kefJdb9zGkcRkC/UpqKaQHW5MAd8nAGU'\n\
+        \    'TIMzLw/O43Tm5eUm8zycOoRaJ8yq6rBjRfGFl00uvWRDzSCoArVhhE489qZVY1TDH4az4K9xVHSI01vnb1kcOf8+6HVpKtVVvdHfgHKlum+zaT'\n\
+        \    'KfTp1F3fllNr2CxysvzTTBearRuTfO43S5toywgmF02w88HwG9qG1tsUE8T8fBjp+GwLxsEWZzb8pARoLpNLwNonHgsOZ0ypJpnOeBz2Zeepcx'\n\
+        \    'Lw1YGowD6OOzeAQjLkiNZA0WBYsgZX4wi1kSA5zMYVu1F8l8NA3H7CaMAPp46mUZA2wzXHtPahgGLBFEfsZUwcMLxhJADNaZZTmMICEAXPb+g0'\n\
+        \    'uy7qS3I/PAru/Ze3uWza6a3VZHq8HyI3v/NVSdfm529T6H0GMX/j+wGk8N9OmiPWxp/fZeQ6d9ALt/BEAvr4etM328g127fgj4HB1uBjsFRcyu'\n\
+        \    'Wv127+zr5cA92oV/Hb01bya0KJvwXzcK7mWZydWoA7J9CSqNv5mWtQ5ESdDJILyFgne4cnHqZwSuqH1nWlUYkCydcMaxJYQkDRZ9DYps9iwY9P'\n\
+        \    'OOCDL/57t3YuycBlkC7BZcPhMASP2JGjgIItULKyp78da/fmFjKLuN0zDI3Aej2ekYttFs90/7zfMhPLaa/eHFX66bP7fgpT0YwN9u69PAeNQh'\n\
+        \    'LuIpLP40YKM4ngZeBOvv+QDdvfFABvSWsoGHIhCs13OsJE5LlxDSG+i7BZvCutqw+c9BnNN+fG8z2OdzvbncFsRqYG8bCDQFbRT4/G2e+J540X'\n\
+        \    'v2Pd9LqWuKTyWgoAan0Jxqc/FSmgWxkRpHryLJAP2QX/Nh3V29FsXxBtZ+copzKtfxZevPo8gbTVE9UcNhOL4TkiOrTOtBqKMFbJAMrCEoCW/M'\n\
+        \    'l5zoVhrk8zRqCADAG0L8nCTO8rNg6i0D38wnYWYrCbYaj7DggExJyrmeE5NFXcZKvMVC374LI9/Ow3wa2H6Qe+HUzkgf2/N02tB6EFmQlHrhWT'\n\
+        \    'zHmSJv5XM/sLERPYlGwGWwTUz9X9xzfHS6XteG18/FK29IwGfxIhjkXqpozgTmZoGteCKkxTPHXbyIKYg3MRPxBhOy1SzsAnX1GEcWpxFjSFwn'\n\
+        \    '9N3Qb9AjDujiH/5KY7r0lxfwcV3+w4v44C7/4UWAgYtkFTBmCEISVIwpSenCA2+naOpO0a7Blo/0V0oqMEWIWx/whPXAWUetyEs3gi351SsFRB'\n\
+        \    'bwOTthdh5GYR6YsoNVUSX7Qt2ll08cb5QV7U9g79DLVeMTt36420BUH1+sCJCfmJw1vimETSi3TNhL+gGnWGZauLWchVkC/H4ZwBqOscwPIpju'\n\
+        \    'cuvbtnNwYxH8NVUy9UaB4pqFN50HNg6bhf/gD2PcK60H1T4n6ZSvJFlWIwd/JccykyBoBbTVmhxIUToA6CYOIcquPB81rAmTre9aNvwc0l/1Yj'\n\
+        \    'XE3PPSLEglJF4EMyDkFtbDmpPgp949KhJ0CfwQTP4zUcB8msrzO4By8RFbPicyXVRJGoHOhubzjCZxYIkaIGx8F1CZZWtWyaF9WLeP9qHZApu9'\n\
+        \    'B9fvNgU16Zt+eaFKW0Qa3wPflncNmoReJNZkinB7KU6ArD1Tb+Nc9Prtv/a6w2ZHkXa6TlpYllI3oHUK8GxG1B5PwqkP6pnKHGhLHEGl9ipSDv'\n\
+        \    '8Bg9ebZeZO3d7Zs6z1AScBbbWSH7MS43FWzez6gY3GoeSnZRLceOPARGG161YDkcad0875AP/WAxs3Df2A6RtJHJ2CfwQiy91iNrIesjnaaKpi'\n\
+        \    'ZAnFqtw1ltEjUbwoFfTmdYjRecgr0Jg38xTloagsVpqz0fsPYhhEedNaYt2Ty/mx1R+2T2kxRdMfiNTerqWwkiuHXaEQ2ZnceirkbQSOajEmYj'\n\
+        \    'GMs9bHVqd35Vx/aHbPmtCkBv932h9bbND+0G12WLs7bHU67Q+t7ikYXfU3NhnosE0/vXYTMaIqEOMNetf909bOWR+G6LJ+86zZZ+x//vO/GANE'\n\
+        \    '+p9Zv3Xa65+xwUWz32q+7+CQdZusfktALPFzDnrYJalq4CPi9CkIbyf5YD4zwdO4gRWSVtxxYVtWsOXYCf4Ozlhm6kam9ZPBH47Hdn3XVm2kRW'\n\
+        \    'j9hIx8zPHj7CwCF6b4dU5bQMC+1eBaDtZno1SxxH1a6nZx4fdh/YHQCY516aW3YUQaa49zRemvoIlkj9xOBI696BTk6A4dkQD0nrnYefegjNxx'\n\
+        \    'AxUoeKFA00f4rxBHACZ5HY1QbuZJw9SUU6S6p6aZ/mieoF0A/9cHyOJp9UQPtYnS7oJSo+QAMbDTRCCrG9iS7QdUxjxhNu1wrxrca/KiwdsXbh'\n\
+        \    'uD1jEwSQx7eZZQl8hn2QRUpmOgFyykgU9dH0mThXJxWRAJlMIKuZ4NWp3WKTAUiN5Z+2P77Bqk8Kw5bLKrHggjjPpaqE8xKEIAsSecnmDAAh3e'\n\
+        \    'gdNG9qpiCbDSJerclLKouSq0GgE4TGuxrxj8CWfm3QVkUJDpXtAbVPNU0vYmTLPcsCv7d1rdD8OLrwPY54aWk01IxB8F1nKXMXrvB63+RyAVVy'\n\
+        \    'ts2L5sddrdFqmxYfOKNdl7UDDDHlcorD0csNPeNVBRQJL+EjeKNE9KsbNsscJjsth+DivX98FQWMVdoAwKr9W+ArwQ5ctWc3Ddh/n0W4OrXnfA'\n\
+        \    'ZySRLbxGyTCfPLCGQbeBmkMnFoNJSRovYK9MldOOUaIY7MHZfIouHgNHz+O8K9RWwRgKvhhQc0bliB1YHOntHQPgXEWmNE1dgNQgrHK+ACIB91'\n\
+        \    'vnMOkLsZID1u19WmN10cWS3uKz2L2qUwW3Kwd0dZ3A5+eL9JHWBbengeKvHvCa5C65TEUEQOxMCpWiRjTFkMFG+w/qnmkzFJss9Nmw8Ta50mbZ'\n\
+        \    'fRAkLMxAFn3ub4AAhzOCb9OCgmPHA8ssQE6ioOSV8Lsy0n/kJGR4zhGAHTZdsps0nlVwngO+tzcNavPIW4CvSEa78Hig0cwLI+6+TAPfWd3on7'\n\
+        \    'L8yHM2C4NPvDdEHAdNtlIYwSyFJ562Kgd5nADoUkhIwgKcwW8/9abTEViB2SrYAh0E0Si5gjz4IXkMVauISskAiAxSEfKFJCrHzDgPcjDNQdg5'\n\
+        \    'vjuckKV4MBhS/y25kBTaBNStb5oWKHPheG+KUoYRrCaOXxmmLHo+EV4MqoKDG3vyyCKqpGi83NgT59yLAlMPAk7yPMmOa7U4Aff4brkTBfl9nN'\n\
+        \    '45cXpb85KwRrhkNVglw5bTIt0W2GK4CvilyKIcAWQtn4DFdxc48+w2c27jhVaW1W6CwK8t6s5uLZvPZl66rO07B199bwnefIzHDf8EAjyaKUeG'\n\
+        \    'eTj3kwB4YxKEGdhwOYxTyzw6KMDZ7R0c7O//E+ApTFrAR8wzZzQah844duZ3NViArEanlLUUxvs2+zHx0nnUi67DCiZjTAvwPZTDr4LdH1VTCl'\n\
+        \    'NFoCwHS9DGM2c8T9Efxc34EhyxMAN2WI1Citmhcc/jfcmxRNZ6kEVpGKeuFjvHEIuZOKFvFSAIU2opg0X04uhxJihbeec9VPzK8SmK9BG1omm9'\n\
+        \    'dJMNNd+/i34yblTRsbrKsh40lEGrOBRo5JEly1wBW6sf7vroIlD4caWRwKx2xJvogUhYBJ0yj2UqvcRIPh0ce2iKEyGth2Jltrcb1AI3Hk7lAk'\n\
+        \    'DxpK/HeArCZAonbW0d9ZbJnK+cnWhrl66Ake+AAHovCpDQpqqdeAWY2Ix4GzvLIw4NnioSbZUE6CHzEtUqTGbxusaJsqLMkGVhKTwx0UBawI+2'\n\
+        \    'cXb96XIHzekdufHuiP3FAINZ7IhiI105FpPRmTw1i/NQFsvgceTNAhWsjF2ax0+GcRw7cZLzNia2sQ0YCV5nZjkSVB4FyRlpASEBNyvgZrCxgi'\n\
+        \    'EyDnCqxq+//ZY8nEZ5On38sg0qiz05iIhnR/PZKOCzoc2LeRT8BL7HrdbjY33/7jlh1oUnEyrExsuwpsGljfmuh3PkQE0VLsfgvQqzrYaMfesn'\n\
+        \    '/5iAVKDHD1jgzzlYSL8LvV05LmGGuybitWtt1ekUczPdb2a5KaelqM7rnBtKADD5gbtzPbCNPzl7N4btP7WQ6PJQzJvBzhQR5vhw4u5KXA3NDW'\n\
+        \    'PX3Z/Bhu8ajdW8A3bDA3Arxabh++zy8pJdXBzPZsdZxv58PTz9s2ErLEFTkDkkzv1N+YDipAoN6GQU8eYbOVccEgcjnFdCl5JiuFtKTg0in2IB'\n\
+        \    'Vj4BKz5jrW/jIMEtgGvitSwMNnbNtUILR4USU0Fz0GopGgBTj3kAmkpwFugBHB7s7ooaTB+oLP47mOD5VYon0eD+GNdgBu40b2HnBJkpR/V2Pu'\n\
+        \    'G+vnMZA7/Gaa1ePzhy9nf2jE2gmmOcKoDxkgQsTbIta2jO2EwvATthG+yEciEVYLoJPikvO10+8LMIP3DHDj/5IN16CiVAA2AlrHvp7sEEieBk'\n\
+        \    'v6p8mJ6ivmlcDIdXzNjG9kotVqbVMCAZcVplLYw6gvJfv7DRNB7fUUMqOKwf7X1pILpRAxA3tWQcsJI5+loZbM4P95MQ1IUZuWHkkDFEIC3Y0X'\n\
+        \    'fqJCforuFxiWltR+/e7NK/H81TkogFUAbWGss8YNAl+IyzMAfKIsz7FDUQjWbv2hEejEq1DbV5LJQ1yMT5zqFcjUeyx6fLh7EDHuCYc57QrmsB'\n\
+        \    'fWVBVpxGSqa2S55EHtubHAR7k/0vzBtSLpmwRp4wB5GfBA6j2F+6XHCVjNHijQIQfPAFY0F4ySqwGjgHFe1VjgVqXM9vhuk49W5yEwHbeSxiXK'\n\
+        \    'u99Bgx9fsLeQQ/6IU2Pm8OTyttsbQLRnhRLBAWJCIbiFN/I2F2BO24jRMUXQwVwADJMRVNdjiRrG1DGlOKR0CcgaSKHRna8f8KRK67zY/NdgdD'\n\
+        \    '+6yGYkzWAanwyyDLvFtAS1gGVHiKp/r8eJRvGF0wPEzruNzD2sC9pRWVx+Ze7pU51gftt0HN6+YRqYiiwERAVqPY07nf6caImSo1DV5scK6MpP'\n\
+        \    '+CNi8WhFAQnvA2zjSIbvMJehjRCWzvjXB723ooBli4oh0YAsUAIanPhbQhFgrKSb1uobkeRnN17l4c/7vCZFrYBxa6dsX7GwKITQRIrOXG7Co4'\n\
+        \    'lazgLjTbcFczDG3Yu6el2rpuNsJAoa8wdsGU2ICxNxW5AgrNt5adJQEa4LLkyFrFK7qJXaN92uzt7R8Ds4U+cDr7zhg5LOkSy3TU9myjG+csm+'\n\
+        \    'OGFviGJZo3xeDY3lSYCPu1SzFQPCuEHsdodckW2H2mgHygQ0NGOBMgjv1GKFS99dp5gwDuZrWJoaaHDEt+FrejKG8EFdkxTlFPmELig03ZmiWw'\n\
+        \    'r1s/hf4xlthIF9vogSUyuFuyLo+f/CCyYtjKjF3Y+8QyWAKSF4Hnp1I1KkVQKMffK4Cc+28CcNvAvakUwxWZk20lycrSJms1eQtP3mriJiT+xl'\n\
+        \    'UtBXgxZGjZCbeWME/tZqXWKOoMy74N4lkAvLbeTNYYuhIZx6CGYX9GTSIblOXd0JpA13WJ1urBT9BlW6+pcymXog1SLgX+CSlHj/HGNkIQDZ5H'\n\
+        \    'RSXFfG2DSqGW/Lm1WioFpIVfMvNu3aJa87wMqDFKzpc0DWbJSg/yiAz0TQyY7QrKPEcpc41L7zYqRHjVhYPRrJ9Q5vDh2LiO7sCpj5Tk9oNb4E'\n\
+        \    'fsSfg/KYVkEwg51GOKetYZEOJ68GHAWiqUyC68f3iw/TIwwm9Tb2bYq5Sbp2BN20QATfSeFjs0Mv5vNj1fJZS5sb5sMrpUWjvEdaWZjFSV1xiD'\n\
+        \    'TBW5Wtb37y8r8rQszYDWzOZuzGDerCwkhXWJjMLZKC5zDxUahWO9ykH6HqAHQgyp7UF/6oxzNyPe+RiAcR7my7VuC1Gx1g0UPce3kr9gbsci9i'\n\
+        \    'tCxniFI43I+8JkxwQ4FI9d8N0oGO4TBpPZcBIQdZr574g1KyqVGbCS9ciS/T28V0qsZ4lblWjvAEHaEaASjcH2w7eiiSlSI8hD45TTsvA5+wp+'\n\
+        \    'kDmFYZSFvjzqkaGAMJj6pA2FnjNg/wujO/zFsB/9BtkYfhvcs9Vi03K3CRZugkqfLqpgqgwgFyxelufktLpnX896p9eXre7w1SsCdPL6oEGdIz'\n\
+        \    'z5KYK/ICBQvNJ/MAQ183XY/GBJnyjiw3JLGaUqEh5I+zYCc//Uy0AGYWXBNgHvlM+ejp3kVBtiqg0x1Yac6qN0a3ivV68UaFNq/u/fiyIEUy5J'\n\
+        \    '5iMMwpQLEXoaEhMARpagvQofyzHXpz5s/QIkk7hQPxF1fdATIjk56BSNyEENV/G26HfbpR7KfSs35fOx8OfphmqaFlLw6bbl2eObbP9jAiDv/N'\n\
+        \    'GV53xfMDypYSKGMNILA1I7hdD2413yx/lzdWCv1WrZTET3lvCvCPH9Q4X3Wt0PnfbgwnISnBoKqhzfkvE9jFGs+qUhTcy3HoojhpLmdrmDiWQt'\n\
+        \    'RZlPfv2Pd1+23vH4MpGKt1c24TvMPyqlOjvZfJRJDwdri6h9parGIzewBExkF80IJ9IeY6Elbi/YHEeqsGRmuvH+/SlDNcr6qOaxvdj+SSsRl1'\n\
+        \    'uNsTh5kccDjyUek2daStSoVEmYjFmvmxAlbX0TTmGHoYzr9XNjGWMrHxlrJzrZsQgtWBjkE0lmRfSl00FdsFrOk9AtC6NYSNZMxXPxWt7ajqOO'\n\
+        \    'STDWRnmYXAuIs8by3gM7gFtMqUFZEU4YgciFyHQYXhK5PeXSFwVvvZ+HU0x0GLnFBiPKTIMnT5aTe2D3L+Ui3h0XHX/98vCsKy5K+EZ4UzSIfN'\n\
+        \    'P4DTSGfLlTTwblUxY18vhLnNz9HCyh8U+iFE+i7sDm7faG7PSidfpz6wxQ7dAdhczVjsB4QxSUWSaU7GjTiLOsQGZWxJRWkphUasOoiFQCS2sp'\n\
+        \    'Q0XyQ19efxPMBNaUPO4TcVVuqoPAsPZZxrIQbAM6bAzjecbGk2B8B32000oRCMAKAGts89ON4lzPqsgeVPioQz3hvcv0tkhmYWlZGQz+A8tKpN'\n\
+        \    '/EKdgb9E75PcaxOgZEjkesahijU6V8VzJEjqxWwdWE6kDoa71mgbWWjiTyV5o8uzkz/3UsqZtAm2Sfy7SU8DvLkrqruPuXx7kHGhvLpUZby9O9'\n\
+        \    'K6lhuosxCyNz375TqtsibgCaIDjK26VM7TvrBym6G3NjlZ7/iGcn+/UBpkGeesR9lBEpkhy50PMEQ/uOR1VLbHussDKIC3niFHLdevZUo+jt5V'\n\
+        \    'UMSiPUWPmsB3aKokmxVYiLTtcpENDim4d2pKyxSJEs/Jxc5APMRS6JN3H1Gp/h9opph4UlgVqdLsyJ9LRuj31s9dvnbS3JTgWt2102vGgP2Glz'\n\
+        \    '2PrQ6392GHh5eOkVnICUCxlY2JjYTXdlb3HhcP56mqMWCZLcST/H5BKU72SMYWk3peVh3TPT8njSInb4I1nf/K7FWsJ3nXKfX/M7AeJZJA2qmx'\n\
+        \    'wwspYxUYgSmfniNgYRQSkfqWV4KQ9a1F8LAdLaoiiRibjpEgCNzS0aOb4qLo0s9dhvERef42J4zrNCU0sVJzEDBYcZgzz/en2OI7rlL5NLe1et'\n\
+        \    'Lk+fJnUp8qyFuDb7Z8QnPNNUYckhKMgI1VlRDmpzaNJhrou6Qm0NHNNG9f5RpnptleZIDlVSUKiCBpUGjEjTpmZgM8spKNZdUXHlWVgNPvPntK'\n\
+        \    'w0HksXElHjaEeHZKFtPn/jWQRPhqEbPziKK4P44xl8jU2HeOWBnhlEaaz2e04iXsngVXf6JFlzED8iKz48SRXt+tr+oX34xj7aI9Vc6liann4N'\n\
+        \    '/61dP3xrH1Z0IWOgok/9APrsvbH3XteV/Y5Ctm7Ac4YVejm1Hp7cZ1OSG/jh6ikVAgIP4g5sSqJhF8lutpYcB894OZZvgWuI8AN1/tUTNrbp+y'\n\
+        \    'UskQfeC1tc5RS/S/GbJZTOA3O2HpLihiG+c71d3JlMtp5x7zNDj9g/47c/BYhBvpwGJiHk0LNz3u50MIUDvR9+d9P+Zi9R4Zcyj/Xb0cU1cvn1'\n\
+        \    'B3rhBk65g5g6bU70LMZudoftr81Ouzn4et5pfgDsZDciRTLxskAGwrTLQTxX21z7DIUjLt+pS2tnRTgEfCkwf2A7j7MEVhK37PWc5wbLvYR54u'\n\
+        \    'KOdlEnzDNxomYQfNhUg5SicKTKO83Prf7X4eer1tdB73z4CXYEjSlK+eFpnJPWkynieJ9U8UiRhU7FYzCqiRD3Lqzsp9BHg9Se4MsFXUwz5ZIV'\n\
+        \    '1wd5h/E39762Z4+X7mTLOajf2KmrrNv7LWf/4Mae0I/akjbwxWDY7/3cUmyD91c5HmQpiHI+uibfR/ZRHWxlvDVWnJbVG+GJu08HYwLpMB3DcO'\n\
+        \    'NvgKedboW1feQ3Xoc7HNTspFg3/rZNv6u1UIYN8BcaJOW5rCJ1sGfX37yx628PrOrpILZViGmAOXG96BZMHnNzxsKf3mLU39p6/Wb3pobPN3+A'\n\
+        \    'yq83Ubn+1t7be23v7R4pxJvpmKJG9C0kST4iERFwO7VsQn4HP56ya1O0bpVuFYssFJXM/iVOGseZSQ95jFedPTAkCbRlbaX2stQU/OeNTdcWFH'\n\
+        \    'GlBV1qiHFNOrYT2/jU63fO2IdW70O/eXXRPmVn7cEVyB/YPRh2aLJBqzvo9fltUEO73odXHXflnaJ1uF0DRt7hVjDSDB/fWIUpJ3qUwj/8Kzl6'\n\
+        \    'AIgu6cN8oiK1vOTC8h78mxVZKRG8OCgVuu+bC5SQ+dbZakI2EDlZuoCo1kLPxt5Ki4BircYuwYWaBXgZEW/Y4DeC0gS/bAJOzggMoiCIWDYfwy'\n\
+        \    'aSoZJcvf0l8cycUm6ynu/9bvfVq6dSePS2J/U9ko8HPtO8UE2gqMznQrFqBOamlIAvqJZRSrui3jr5dngLaysvUQoAcKJS9ecSAJ26vPvn1e5a'\n\
+        \    'ZvpTu6wmzcIXkm5QSf0k32CJ7XIG+KtXWqZ3EeAMMW8Y+fWYMzBIDnGhFsxd53jlEV/1Bu1hu9ctvGX0mwiAvCQ+QXGo72leUoUIDT61Wles2W'\n\
+        \    '1fNhEcAyf7DOHB28eWYd/vkBjuadCOVuQR85f5RQ+8adVWboj8dMvr16X4wNq1K3kKF0fDeD6e0FmZqX3gjXHjlvK9miJn9qWrNXCap4j61+sr'\n\
+        \    'aYHSWVZJ/cPeWuzGtb0b3GW1HXltvy0a84231Ja2YKEe0GkP8A6flkQ+wgKk26G1xX8q9Uqhgp6jW36oWp6rWVSmOyfpLyCj36wt/WWbv3yGl6'\n\
+        \    'Ws4S8UxznB+VkPfJYNSYCs8fhYcIQolYdxyicW5dVOsagse8WycDUOKsurwgeyrogfFCHSAh45zyW3WU5gjY1WPVzdpC59fulfZ1WX+tJhmxeN'\n\
+        \    'J3EKm1QZIuW6gs3rHq5X4Pe0MLTHc6awAFt+ERdxS7edf599PlizxynBgkGfnBJZhHUeLdnIS9E6Jz+ObPNZ4GXzVMVGOaaGXIWVjIJxPEvmuE'\n\
+        \    'gPKx8rzByQo6nJp4kJQIJMT2QP86PLxIvcvX2093ZFxsczhJR/yejE3f3+nT++48PJ1xP+uoPQCwkWS+Ty7/4IIDum3taqmfhbw/WRx3rZr0of'\n\
+        \    'YfFOXUS7vW/mrg0llvUFNovHP+qurHojGrF/7Mrg1AAhcBSk0xAdc+QtLFYIw/92VLUBdZqDIdvbZxcgvfxa9VW/97F91urTLZLBsHl5NWC9bu'\n\
+        \    'ezZhjWjyoMQ+GSv0f/k3YrULx2Hieoil/DfphN49w1+Y62DwRHmuprXuQHUg0lA3KYo4lrEtwdAGdticUJv9RwVtPghrQ97I3b4RYOsg1vB5ad'\n\
+        \    'IolcrN7G0h2+LTfK9oZwEPgd96cMELohIcZ9tyu8sT5mlKLjYOIwNsdxNOFD89ciSMxtDDV8sQbiThDlHPS0YSy7BBUnsE90L1sTFWbKzt7+xC'\n\
+        \    'jZIUea4aBb8HjJn5Zkf6+i5f+H3aCzP7GEr7GxduAkRFLItNo+OSeAOGs2hGI5sT1zIS+C1hsUko2HQ66mJbYBly1NTwB3u9hmWyvTTtP4gZxc'\n\
+        \    'Tv/bFxXK3hBdq1b+tvjKBjcQL9qDIfpxl5hczA/tYYOtiMsc0x0dGNvWTHVx6hXfMO3OIk96Vie792E+KdL0Mn5EJnZvfMbDPcwdm99OZHEeQ6'\n\
+        \    'HDhoAtftkAP2LgsdtpPAJKBJwZshy/cYAfbdHRWfn6UW31OyKbTtMMQ8SKdM7hVsLji/8Fj7kqaQdaAAA='\n)\noriginal=gzip.decompress(base64.b64decode(encoded))\n\
+        assert hashlib.sha256(original).hexdigest()=='600e6ef19a5cd52b911051271314b6562c90a72f1f09bd8ffa6300fae865adb9'\n\
+        protect=['SatelliteMapView.java','DuwmLiveWallpaperService.java','OperationsGlobeView.java','V115941ShareCards.java','MediaDeskActivity.java','AircraftOperationsActivity.java','WorldSourceHubActivity.java']\n\
+        widget_names=['DuWidgetProviders.java','DuWidgetUpdater.java','WidgetSnapshot.java','WidgetRefreshScheduler.java']\n\
+        protected={n:hashlib.sha256((pkg/n).read_bytes()).hexdigest() for n in protect+widget_names if (pkg/n).exists()}\n\
+        widget_resource={str(f):hashlib.sha256(f.read_bytes()).hexdigest() for f in (src/'res').rglob('*') if f.is_file()\
+        \ and 'widget' in f.name.lower()}\nactivity=pkg/'PulseDataActivity.java';assert not activity.exists(), 'Avoid\
+        \ overwriting existing activity'\nactivity.write_bytes(original)\nmain=pkg/'OperationsMainActivity.java';text=main.read_text()\n\
+        anchor='        LinearLayout layers=new LinearLayout(this);'\nassert text.count(anchor)==1, 'Operations first-screen\
+        \ overlay location changed; refusing unsafe injection'\nentry='''        TextView pulseEntry=action(\"LIVE\
+        \ SIGNAL VISUALS  /  SHARE EACH RECORD\",\n                \"Source-observed aircraft, earthquakes, ISS and\
+        \ news; visual radar and point sharing\");\n        pulseEntry.setTextColor(Color.rgb(99,229,227));\n    \
+        \    pulseEntry.setOnClickListener(v->startActivity(new Intent(this,PulseDataActivity.class)));\n        globeFrame.addView(pulseEntry,new\
+        \ LinearLayout.LayoutParams(-1,dp(50)));\n'''\nassert 'globeFrame' in text and 'TextView shareObserved' in\
+        \ text, 'Base advanced cards or globe controls absent'\ntext=text.replace(anchor,entry+anchor,1);main.write_text(text)\n\
+        manifest=src/'AndroidManifest.xml';ET.register_namespace('android','http://schemas.android.com/apk/res/android');tree=ET.parse(manifest)\n\
+        app=tree.getroot().find('application');assert app is not None\nandroid='{http://schemas.android.com/apk/res/android}'\n\
+        assert not any(x.get(android+'name','') in ('.PulseDataActivity','com.sentongoharuna.worldsituationroom.PulseDataActivity')\
+        \ for x in app.findall('activity'))\nreceivers_before=[(x.tag,x.get(android+'name','')) for x in app if x.tag=='receiver']\n\
+        ET.SubElement(app,'activity',{android+'name':'.PulseDataActivity',android+'exported':'true',android+'label':'LIVE\
+        \ SIGNAL VISUALS'})\nassert [(x.tag,x.get(android+'name','')) for x in app if x.tag=='receiver']==receivers_before\n\
+        manifest.write_bytes(ET.tostring(tree.getroot(),encoding='utf-8',xml_declaration=True))\n# Same package and\
+        \ logo: new version replaces rather than duplicating the installation.\ngradle=root/'app/build.gradle.kts';g=gradle.read_text()\n\
+        g,n=re.subn(r'(?m)^(\\s*versionCode\\s*=\\s*)115941(\\s*)$',r'\\g<1>116000\\g<2>',g)\nassert n==1,'Expected\
+        \ inherited share-card versionCode 115941 missing'\ng,n=re.subn(r'(?m)^(\\s*versionName\\s*=\\s*)\"1159\\\
+        .4/1\"(\\s*)$',r'\\g<1>\"1160\"\\g<2>',g)\nassert n==1, 'Inherited app versionName anchor missing'\nassert\
+        \ 'applicationId = \"com.sentongoharuna.worldsituationroom.rb2live25\"' in g\nassert 'versionCode = 116000'\
+        \ in g and 'versionName = \"1160\"' in g\ngradle.write_text(g)\nstrings=src/'res/values/strings.xml';s=strings.read_text();s,n=re.subn('DEVELOP\\\
+        .UGANDA V1159\\.4/1','DEVELOP.UGANDA 1160',s,count=1)\nassert n==1,'Current app label source missing';strings.write_text(s)\n\
+        for n,h in protected.items():assert hashlib.sha256((pkg/n).read_bytes()).hexdigest()==h,('Original protected\
+        \ code changed',n)\nfor f,h in widget_resource.items():assert hashlib.sha256(Path(f).read_bytes()).hexdigest()==h,('Original\
+        \ widget visual resource changed',f)\nassert 'V115941ShareCards.share' in activity.read_text() and 'postInvalidateDelayed(33)'\
+        \ in activity.read_text()\nassert all(x in activity.read_text() for x in ('OpenSky Network','USGS Earthquake\
+        \ Hazards Program','BBC News RSS','Where The ISS At','SOURCE TIME UNKNOWN','NO VERIFIED RECORDS'))\nprint('PASS\
+        \ V1160 source: interactive radar, provider-driven motion, individual shareable records, coloured signals,\
+        \ source-truth timeline, original widgets untouched')\nPY_DUWM_1160_INSTALL"
+    - name: Compile complete Android APK
+      shell: bash
+      run: 'set -euo pipefail
+
+        cd "$PROJECT_DIR"
+
+        gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+
+        mkdir -p "$RUNNER_TEMP/release"
+
+        cp app/build/outputs/apk/debug/*.apk "$RUNNER_TEMP/release/DEVELOP-UGANDA-1160.apk"
+
+        '
+    - name: Verify signed APK actual compiled DEX and correct version
+      shell: bash
+      run: "set -euo pipefail\npython3 - \"$PROJECT_DIR\" \"$RUNNER_TEMP/release/DEVELOP-UGANDA-1160.apk\" <<'PY_DUWM_VERIFY'\n\
+        from pathlib import Path\nimport subprocess,sys,zipfile\nproject,apk=map(Path,sys.argv[1:]);assert apk.is_file()\
+        \ and apk.stat().st_size>150000\nwith zipfile.ZipFile(apk) as z:\n assert z.testzip() is None\n files=z.namelist();assert\
+        \ 'classes.dex' in files and 'AndroidManifest.xml' in files\n dex=b''.join(z.read(n) for n in files if n.endswith('.dex'))\n\
+        \ for item in (b'PulseDataActivity',b'V115941ShareCards',b'OperationsGlobeView',b'DuWidgetProviders',b'BBC\
+        \ News RSS',b'SOURCE COUNT',b'WORLD GEOGRAPHIC DISPLAY',b'EARTHQUAKE'):\n  assert item in dex,('New visualization/data\
+        \ sharing or original feature missing from compiled APK',item)\nsdk=Path(__import__('os').environ['ANDROID_HOME']);tools=sdk/'build-tools/36.0.0'\n\
+        subprocess.run([str(tools/'apksigner'),'verify',str(apk)],check=True)\nbadge=subprocess.check_output([str(tools/'aapt'),'dump','badging',str(apk)],text=True)\n\
+        assert \"versionCode='116000'\" in badge and \"1160\" in badge,badge[:300]\nassert \"name='com.sentongoharuna.worldsituationroom.rb2live25'\"\
+        \ in badge\nprint('PASS real signed Android APK with radar, data cards, source truth and unchanged application\
+        \ identity')\nPY_DUWM_VERIFY"
+    - name: Upload installable DUWM 1160 APK before emulator tests
+      uses: actions/upload-artifact@v4
+      with:
+        name: DEVELOP-UGANDA-1160-APK
+        path: ${{ runner.temp }}/release/DEVELOP-UGANDA-1160.apk
+        retention-days: 30
+        if-no-files-found: error
+    - name: Enable emulator KVM acceleration
+      shell: bash
+      run: 'echo ''KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"'' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+
+        sudo udevadm control --reload-rules
+
+        sudo udevadm trigger --name-match=kvm || true'
+    - name: Android emulator verifies genuine visual screen and per-point share action
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: 34
+        target: google_apis
+        arch: x86_64
+        profile: pixel_6
+        cores: 2
+        ram-size: 2048M
+        disable-animations: true
+        emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+        script: 'set -euo pipefail
+
+          adb install -r "$RUNNER_TEMP/release/DEVELOP-UGANDA-1160.apk"
+
+          adb shell am start -n com.sentongoharuna.worldsituationroom.rb2live25/com.sentongoharuna.worldsituationroom.PulseDataActivity
+
+          sleep 5
+
+          adb shell dumpsys activity activities | grep -q ''PulseDataActivity''
+
+          adb shell uiautomator dump /sdcard/duwm1160.xml >/dev/null
+
+          adb shell cat /sdcard/duwm1160.xml > "$RUNNER_TEMP/duwm-116000-ui.xml"
+
+          grep -q ''LIVE SIGNAL INTELLIGENCE'' "$RUNNER_TEMP/duwm-116000-ui.xml"
+
+          grep -q ''SHARE SELECTED INDIVIDUAL DATA POINT'' "$RUNNER_TEMP/duwm-116000-ui.xml"
+
+          adb exec-out screencap -p > "$RUNNER_TEMP/duwm-116000-visuals.png"
+
+          test -s "$RUNNER_TEMP/duwm-116000-visuals.png"
+
+          if adb logcat -d -t 3000 | grep -E ''FATAL EXCEPTION.*|Process: com.sentongoharuna.worldsituationroom.rb2live25''
+          | tail -n 10; then true;fi
+
+          echo ''PASS Android emulator: new source-driven radar opens and individual share controls visible'' '
+    - name: Upload real Android screenshot and UI evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: DEVELOP-UGANDA-1160-ANDROID-EVIDENCE
+        path: '${{ runner.temp }}/duwm-116000-visuals.png
+
+          ${{ runner.temp }}/duwm-116000-ui.xml'
+        if-no-files-found: warn
+        retention-days: 30
+    name: Build and verify original-scope 1160 APK
+run-name: DUWM 1160 APK - Real Data Motion + Every Record Shareable
