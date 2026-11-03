@@ -1,0 +1,138 @@
+name: DUWM 1672 | Public AIS + Real Moving Aircraft + Responsive Desks
+run-name: DUWM 1672 | Android compilation and 1672 source verification
+'on':
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/DUWM-1672-REAL-SOURCE-APK.yml
+      - DUWM-1672-REAL-ANDROID-SOURCE.zip
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: duwm1672-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    name: Compile and verify the complete DUWM 1672 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - name: Checkout actual 1672 source ZIP and workflow
+        uses: actions/checkout@v4
+      - name: Verify archive checksum and extract native Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s DUWM-1672-REAL-ANDROID-SOURCE.zip
+          printf '%s  %s\n' 'fe0e516c88397b1a80578b98a3f06068c55bcc11911a06dac0bce536c5a98cd0' 'DUWM-1672-REAL-ANDROID-SOURCE.zip' | sha256sum -c -
+          unzip -t DUWM-1672-REAL-ANDROID-SOURCE.zip | tail -2
+          mkdir -p "$RUNNER_TEMP/duwm1672-source"
+          unzip -q DUWM-1672-REAL-ANDROID-SOURCE.zip -d "$RUNNER_TEMP/duwm1672-source"
+          test -f "$RUNNER_TEMP/duwm1672-source/DUWM-1672-ANDROID-SOURCE/app/build.gradle.kts"
+          echo "PROJECT=$RUNNER_TEMP/duwm1672-source/DUWM-1672-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Use preinstalled Android SDK; install only needed Android API 36 packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then
+            SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null)"
+          fi
+          test -n "$SDK_MANAGER" && test -x "$SDK_MANAGER"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          "$SDK_MANAGER" --version
+          yes | "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install \
+            "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          test -f "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+      - name: Install Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Check 1672 source, previous upgrades and original globe integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          find scripts -type f -name '*.sh' -exec chmod +x {} +
+          python3 verification/check_source.py
+          python3 verification/check_detailed_globe.py
+          python3 verification/check_1167_source.py
+          python3 verification/check_1668_source.py
+          python3 verification/check_1669_source.py
+          python3 verification/check_1670_source.py
+          python3 verification/check_1671_source.py
+          python3 verification/check_1672_source.py
+          bash scripts/verify-1-2-20-2-20-full-regression.sh
+      - name: Compile complete native Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+          mkdir -p "$RUNNER_TEMP/duwm1672"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm1672/DUWM-1672.apk"
+      - name: Verify compiled APK, package version, original globe, and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_APK'
+          import hashlib,os,subprocess
+          from pathlib import Path
+          from zipfile import ZipFile
+          apk=Path(os.environ['RUNNER_TEMP'])/'duwm1672/DUWM-1672.apk'
+          assert apk.is_file() and apk.stat().st_size>150000,'APK was not compiled'
+          with ZipFile(apk) as z:
+              assert z.testzip() is None
+              names=z.namelist()
+              for asset in ('AndroidManifest.xml','classes.dex','assets/naturalearth_coasts.txt',
+                            'assets/duwm_news_200_region_sources.json','assets/duwm_country_borders_wdbii.txt'):
+                  assert asset in names,('Missing APK artifact component',asset)
+              dex=b''.join(z.read(n) for n in names if n.endswith('.dex'))
+              for cls in (b'OperationsGlobeView',b'SatelliteMapView',b'DuwmLiveWallpaperService',
+                          b'RunningballV25GlobalAircraftData',b'Duwm1670WorldMapView',
+                          b'Duwm1670FlightMapActivity',b'Duwm1670NewsAtlasActivity',
+                          b'Duwm1671MissionActivity',b'Duwm1671SectorActivity',b'GevMarineActivity',
+                          b'GevMarineRadarView',b'Duwm1671SourceStatusActivity',b'Duwm1671Share',
+                          b'Duwm1669SourceDirectoryActivity',b'MediaDeskActivity'):
+                  assert cls in dex,('Missing real compiled class',cls)
+          tools=Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(tools/'apksigner'),'verify',str(apk)],check=True)
+          badging=subprocess.check_output([str(tools/'aapt'),'dump','badging',str(apk)],text=True)
+          assert "versionCode='167200'" in badging and "versionName='1672'" in badging
+          assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in badging
+          (apk.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  DUWM-1672.apk\n')
+          print('PASS signed 1672 APK with protected globe, aircraft, 16-region AIS and specialist desks')
+          PY_APK
+      - name: Publish APK only after successful compilation and signature verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1672-VERIFIED-INSTALLABLE-APK
+          path: |
+            ${{ runner.temp }}/duwm1672/DUWM-1672.apk
+            ${{ runner.temp }}/duwm1672/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+      - name: State verification scope and third-party limits
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### DUWM 1672 source and compilation'
+            echo 'App-side arbitrary display clips reduced or removed; automatic worldwide flight requests remain quota-aware.'
+            echo 'Open Waters anonymous AIS requests are region-bound; live coverage is not guaranteed and commercial terms must be checked.'
+            echo 'Interpolation is a visual transition between genuine received fixes, not a new observation.'
+            echo 'Build success does not prove mobile performance or third-party streaming, TV, camera, and AIS availability.'
+          } >> "$GITHUB_STEP_SUMMARY"
