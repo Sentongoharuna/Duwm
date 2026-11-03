@@ -43,6 +43,8 @@ jobs:
         run: |
           set -euo pipefail
           cd "$PROJECT"
+          # ZIP-extracted scripts may not retain executable bits. Nested regression gates invoke scripts directly.
+          find scripts -type f -name '*.sh' -exec chmod +x {} +
           python3 verification/check_source.py
           python3 verification/check_detailed_globe.py
           python3 verification/check_1166_source.py
