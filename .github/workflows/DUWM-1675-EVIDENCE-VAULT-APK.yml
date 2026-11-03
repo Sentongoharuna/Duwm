@@ -1,0 +1,165 @@
+name: DUWM 1675 | Offline Source Evidence Vault APK
+run-name: DUWM 1675 | Capture real source receipts, compare and export evidence
+'on':
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/DUWM-1675-EVIDENCE-VAULT-APK.yml
+      - DUWM-1675-REAL-ANDROID-SOURCE.zip
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: duwm-1675-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    name: Verify source, compile and publish DUWM 1675 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - name: Checkout the real 1675 source and workflow
+        uses: actions/checkout@v4
+      - name: Verify complete source ZIP and extract Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s DUWM-1675-REAL-ANDROID-SOURCE.zip
+          printf '%s  %s\n' 'ab4c1cd46ee590d4c2e183b6bd88ca861ae026a9daeabf815d4fab58b6015143' 'DUWM-1675-REAL-ANDROID-SOURCE.zip' | sha256sum --check
+          unzip -t DUWM-1675-REAL-ANDROID-SOURCE.zip | tail -2
+          mkdir -p "$RUNNER_TEMP/duwm1675src"
+          unzip -q DUWM-1675-REAL-ANDROID-SOURCE.zip -d "$RUNNER_TEMP/duwm1675src"
+          test -f "$RUNNER_TEMP/duwm1675src/DUWM-1675-ANDROID-SOURCE/app/build.gradle.kts"
+          echo "PROJECT=$RUNNER_TEMP/duwm1675src/DUWM-1675-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Locate Android SDK and install required API 36 if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT" || { echo 'Android SDK not found'; exit 1; }
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then
+            SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+          fi
+          test -n "$SDK_MANAGER" && test -x "$SDK_MANAGER" || { echo 'sdkmanager unavailable'; exit 1; }
+          "$SDK_MANAGER" --version
+          if [ ! -f "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            yes | timeout 120 "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+            timeout 600 "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          fi
+          test -f "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Verify new 1675 feature, real provider data and previous SEA fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_1674_fix1_compiler.py
+          python3 verification/check_1675_evidence.py
+          mkdir -p "$RUNNER_TEMP/duwm1675-java-parser"
+          javac -d "$RUNNER_TEMP/duwm1675-java-parser" verification/JavaSyntaxCheck.java
+          java -cp "$RUNNER_TEMP/duwm1675-java-parser" JavaSyntaxCheck
+          mkdir -p "$RUNNER_TEMP/duwm1675-pure-java"
+          javac -d "$RUNNER_TEMP/duwm1675-pure-java" \
+            app/src/main/java/com/sentongoharuna/worldsituationroom/Duwm1675EvidenceMath.java \
+            verification/Duwm1675EvidenceMathTest.java
+          java -cp "$RUNNER_TEMP/duwm1675-pure-java" \
+            com.sentongoharuna.worldsituationroom.Duwm1675EvidenceMathTest
+          python3 - <<'PY_VERIFY'
+          from pathlib import Path
+          import json, xml.etree.ElementTree as ET
+          p=Path('app/src/main'); root=ET.parse(p/'AndroidManifest.xml').getroot()
+          ns='{http://schemas.android.com/apk/res/android}'
+          launch=[]
+          for a in root.iter('activity'):
+              for f in a.findall('intent-filter'):
+                  actions={x.get(ns+'name') for x in f.findall('action')}
+                  cats={x.get(ns+'name') for x in f.findall('category')}
+                  if 'android.intent.action.MAIN' in actions and 'android.intent.category.LAUNCHER' in cats:
+                      launch.append(a.get(ns+'name'))
+          assert launch==['.Duwm1675CommandDeckActivity'],launch
+          ui=json.loads((p/'assets/duwm_release_ui.json').read_text())
+          assert ui['uiRevision']=='1675'
+          assert (p/'assets/duwm_1675_release_notes.json').is_file()
+          for asset in ('naturalearth_coasts.txt','duwm_country_borders_wdbii.txt',
+                        'duwm_global_200_sources.json','duwm_news_200_region_sources.json'):
+              assert (p/'assets'/asset).is_file(),asset
+          print('PASS 1675 manifest, source data, new launcher and retained desk assets')
+          PY_VERIFY
+      - name: Compile actual Android 1675 application into APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          mkdir -p "$RUNNER_TEMP/duwm1675apk"
+          cp "$APK" "$RUNNER_TEMP/duwm1675apk/DUWM-1675.apk"
+      - name: Verify compiled 1675 classes, APK version and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_APK'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import hashlib,os,subprocess
+          apk=Path(os.environ['RUNNER_TEMP'])/'duwm1675apk/DUWM-1675.apk'
+          assert apk.is_file() and apk.stat().st_size>150000,'Real installable APK missing'
+          with ZipFile(apk) as z:
+              assert z.testzip() is None
+              names=z.namelist()
+              for asset in ('AndroidManifest.xml','classes.dex','assets/duwm_1675_release_notes.json',
+                            'assets/naturalearth_coasts.txt','assets/duwm_release_ui.json'):
+                  assert asset in names,('Missing compiled asset',asset)
+              dex=b''.join(z.read(x) for x in names if x.endswith('.dex'))
+              for cls in (b'Duwm1675CommandDeckActivity',b'Duwm1675EvidenceVaultActivity',
+                          b'Duwm1675EvidenceStore',b'Duwm1675EvidenceMath',
+                          b'Duwm1674UnifiedReceipts',b'Duwm1674MaritimeRefresh',
+                          b'OperationsGlobeView',b'Duwm1670FlightMapActivity',
+                          b'GevMarineActivity',b'Duwm1670NewsAtlasActivity',
+                          b'MediaDeskActivity',b'NativeMediaActivity',b'Duwm1671Share'):
+                  assert cls in dex,('Missing actual compiled feature',cls)
+          sdk=Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(sdk/'apksigner'),'verify',str(apk)],check=True)
+          badging=subprocess.check_output([str(sdk/'aapt'),'dump','badging',str(apk)],text=True)
+          assert "versionCode='167500'" in badging,badging[:900]
+          assert "versionName='1675'" in badging
+          assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in badging
+          assert 'Duwm1675CommandDeckActivity' in badging,'New 1675 launcher not active in APK'
+          (apk.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  DUWM-1675.apk\n')
+          print('PASS signed APK 1675, real new vault classes, current launcher and prior desks')
+          PY_APK
+      - name: Publish verified Android 1675 installable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1675-VERIFIED-INSTALLABLE-APK
+          path: |
+            ${{ runner.temp }}/duwm1675apk/DUWM-1675.apk
+            ${{ runner.temp }}/duwm1675apk/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+      - name: Report verification boundaries
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### DUWM 1675 New Source Evidence Vault'
+            echo 'Offline snapshots capture existing device source receipt metadata, not new live provider observations.'
+            echo 'CSV and card sharing must be tested on a phone; successful Java compile and APK signature are not proof of live stream uptime.'
+            echo 'Existing aircraft, AIS, globe, news, TV and radio features remain in the same Android package.'
+          } >> "$GITHUB_STEP_SUMMARY"
