@@ -1,0 +1,105 @@
+name: DUWM 1165 - REAL SOURCE APK (verified native build)
+run-name: DUWM 1165 | Original native globe + source-driven geographic map + APK
+'on':
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/DUWM-1165-REAL-SOURCE-APK.yml
+      - DUWM-1165-REAL-ANDROID-SOURCE.zip
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Build actual source / validate signed installable APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout source archive and workflow
+        uses: actions/checkout@v4
+      - name: Verify exact source archive from chat delivery
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s DUWM-1165-REAL-ANDROID-SOURCE.zip
+          echo '5870690afdaec33c95d2cb6caedadf6756b9700bcf1f6805cc4431dff58c55b9  DUWM-1165-REAL-ANDROID-SOURCE.zip' | sha256sum --check
+          unzip -t DUWM-1165-REAL-ANDROID-SOURCE.zip | tail -2
+          mkdir -p "$RUNNER_TEMP/duwm-source"
+          unzip -q DUWM-1165-REAL-ANDROID-SOURCE.zip -d "$RUNNER_TEMP/duwm-source"
+          test -f "$RUNNER_TEMP/duwm-source/DUWM-1165-ANDROID-SOURCE/app/build.gradle.kts"
+          echo "PROJECT=$RUNNER_TEMP/duwm-source/DUWM-1165-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Verify real Android project and protected source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          python3 verification/check_source.py
+          bash scripts/verify-1-2-20-2-20-full-regression.sh
+          echo "Source and original globe continuity checks passed. These do not test network availability."
+      - name: Compile the actual native Android source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+          mkdir -p "$RUNNER_TEMP/duwm-apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm-apk/DUWM-1165.apk"
+      - name: Verify real APK DEX, source, version and Android signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY_REAL_APK'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import os,subprocess
+          apk=Path(os.environ['RUNNER_TEMP'])/'duwm-apk/DUWM-1165.apk'
+          assert apk.is_file() and apk.stat().st_size>150000, 'APK not compiled'
+          with ZipFile(apk) as z:
+              assert z.testzip() is None, 'APK zip integrity failure'
+              files=z.namelist()
+              assert 'AndroidManifest.xml' in files and 'classes.dex' in files
+              assert 'assets/duwm_place_map.html' in files, 'Real geographic renderer not packaged'
+              assert 'assets/naturalearth_coasts.txt' in files, 'Original real coastlines missing'
+              html=z.read('assets/duwm_place_map.html')
+              for token in (b'tile.openstreetmap.org',b'window.duwmReceive',b'window.duwmRenderStatus',b'AIS feed not configured'):
+                  assert token in html,('Source map feature not packaged',token)
+              dex=b''.join(z.read(f) for f in files if f.endswith('.dex'))
+              for token in (b'SatelliteMapView',b'OperationsMainActivity',b'DuwmPlaceMapActivity',
+                            b'DuwmWorldIntelligenceActivity',b'DuwmSignalRail',b'MediaDeskActivity',
+                            b'V115941ShareCards',b'setAutoRotationEnabled'):
+                  assert token in dex,('Core Android class/function missing',token)
+          sdk=Path(os.environ['ANDROID_HOME'])/'build-tools'
+          versions=sorted((d for d in sdk.iterdir() if (d/'apksigner').exists() and (d/'aapt').exists()),reverse=True)
+          assert versions, 'Android build tools not available'
+          tool=versions[0]
+          subprocess.run([str(tool/'apksigner'),'verify','--verbose',str(apk)],check=True)
+          badging=subprocess.check_output([str(tool/'aapt'),'dump','badging',str(apk)],text=True)
+          assert "versionCode='116500'" in badging and "versionName='1165-real-source'" in badging, 'Wrong app version'
+          assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in badging, 'Existing app identity not preserved'
+          print('PASS actual signed native Android APK with original globe, genuine map and source-backed modules')
+          PY_VERIFY_REAL_APK
+      - name: Publish verified 1165 APK artifact before optional device testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1165-REAL-SOURCE-APK
+          path: ${{ runner.temp }}/duwm-apk/DUWM-1165.apk
+          retention-days: 30
+          if-no-files-found: error
+      - name: Explain verification boundaries in GitHub summary
+        if: always()
+        shell: bash
+        run: |
+          echo '### DUWM 1165 native Android source' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Source and original globe continuity checked in CI.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- APK uploaded only after real javac, signing, DEX, and map asset checks pass.' >> "$GITHUB_STEP_SUMMARY"
+          echo '- Street tile delivery, live feeds, streaming TV/radio and phone appearance need on-device verification.' >> "$GITHUB_STEP_SUMMARY"
