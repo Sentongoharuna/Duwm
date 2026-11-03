@@ -1,5 +1,5 @@
 name: DUWM 1674.1 | Verified Data-Flow Repair APK
-run-name: DUWM 1674.1 | Fix linked receipts, AIS refresh, vessel globe positions
+run-name: DUWM 1674.1 | Compiler correction and data-flow repair
 'on':
   push:
     branches: [main]
@@ -25,7 +25,7 @@ jobs:
         run: |
           set -euo pipefail
           test -s DUWM-1674-DATA-REPAIR-SOURCE.zip
-          printf '%s  %s\n' 'a60557c84047b32c9d71b6275b7ef6250ac03891d4281d34db25d3d0eb17a79b' 'DUWM-1674-DATA-REPAIR-SOURCE.zip' | sha256sum --check
+          printf '%s  %s\n' '0a51c7d28008770aab9fabed9594835890d339d6d9eecb68800714f9c9ca1e10' 'DUWM-1674-DATA-REPAIR-SOURCE.zip' | sha256sum --check
           unzip -t DUWM-1674-DATA-REPAIR-SOURCE.zip | tail -2
           mkdir -p "$RUNNER_TEMP/duwm1674src"
           unzip -q DUWM-1674-DATA-REPAIR-SOURCE.zip -d "$RUNNER_TEMP/duwm1674src"
@@ -70,6 +70,7 @@ jobs:
           python3 verification/check_source.py
           python3 verification/check_1674_source.py
           python3 verification/check_1674_fix1.py
+          python3 verification/check_1674_fix1_compiler.py
           mkdir -p "$RUNNER_TEMP/duwm1674-pure-java-tests"
           javac -d "$RUNNER_TEMP/duwm1674-pure-java-tests" \
             app/src/main/java/com/sentongoharuna/worldsituationroom/Duwm1674TimeGuard.java \
@@ -87,7 +88,7 @@ jobs:
               assert (p/'assets'/name).is_file(),name
           print('PASS manifest/assets and source-receipt verification')
           PY_VERIFY
-      - name: Compile the complete Android 1674 APK
+      - name: Compile corrected Android 1674.1 APK
         shell: bash
         run: |
           set -euo pipefail
@@ -131,7 +132,7 @@ jobs:
           (apk.parent/'SHA256SUMS.txt').write_text(checksum+'  DUWM-1674-FIX1.apk\n')
           print('PASS native signed 1674 APK, changed launcher, source-backed UI and specialist desks')
           PY_APK
-      - name: Publish verified installable 1674 APK artifact
+      - name: Publish verified installable 1674.1 APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: DUWM-1674-FIX1-INSTALLABLE-APK
