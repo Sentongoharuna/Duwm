@@ -1,0 +1,153 @@
+name: DUWM 1674.1 | Verified Data-Flow Repair APK
+run-name: DUWM 1674.1 | Fix linked receipts, AIS refresh, vessel globe positions
+'on':
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/DUWM-1674-DATA-REPAIR-APK.yml
+      - DUWM-1674-DATA-REPAIR-SOURCE.zip
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: duwm-1674-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    name: Validate, compile and publish DUWM 1674.1 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - name: Checkout 1674 source and workflow
+        uses: actions/checkout@v4
+      - name: Verify real source archive and extract Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s DUWM-1674-DATA-REPAIR-SOURCE.zip
+          printf '%s  %s\n' 'a60557c84047b32c9d71b6275b7ef6250ac03891d4281d34db25d3d0eb17a79b' 'DUWM-1674-DATA-REPAIR-SOURCE.zip' | sha256sum --check
+          unzip -t DUWM-1674-DATA-REPAIR-SOURCE.zip | tail -2
+          mkdir -p "$RUNNER_TEMP/duwm1674src"
+          unzip -q DUWM-1674-DATA-REPAIR-SOURCE.zip -d "$RUNNER_TEMP/duwm1674src"
+          test -f "$RUNNER_TEMP/duwm1674src/DUWM-1674-ANDROID-SOURCE/app/build.gradle.kts"
+          echo "PROJECT=$RUNNER_TEMP/duwm1674src/DUWM-1674-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Locate Android SDK and install API 36 components if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT" || { echo 'Android SDK not found on runner'; exit 1; }
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then
+            SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+          fi
+          test -n "$SDK_MANAGER" && test -x "$SDK_MANAGER" || { echo 'Android commandline sdkmanager missing'; exit 1; }
+          "$SDK_MANAGER" --version
+          if [ ! -f "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            yes | timeout 120 "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+            timeout 600 "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          fi
+          test -f "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+      - name: Install Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Verify 1674.1 data-flow repairs, UI, and source integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_1674_source.py
+          python3 verification/check_1674_fix1.py
+          mkdir -p "$RUNNER_TEMP/duwm1674-pure-java-tests"
+          javac -d "$RUNNER_TEMP/duwm1674-pure-java-tests" \
+            app/src/main/java/com/sentongoharuna/worldsituationroom/Duwm1674TimeGuard.java \
+            verification/Duwm1674TimeGuardTest.java
+          java -cp "$RUNNER_TEMP/duwm1674-pure-java-tests" \
+            com.sentongoharuna.worldsituationroom.Duwm1674TimeGuardTest
+          python3 - <<'PY_VERIFY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          p=Path('app/src/main')
+          assert ET.parse(p/'AndroidManifest.xml').getroot() is not None
+          for name in ('naturalearth_coasts.txt','duwm_country_borders_wdbii.txt',
+                       'duwm_news_200_region_sources.json','duwm_global_200_sources.json',
+                       'duwm_1674_release_notes.json'):
+              assert (p/'assets'/name).is_file(),name
+          print('PASS manifest/assets and source-receipt verification')
+          PY_VERIFY
+      - name: Compile the complete Android 1674 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          mkdir -p "$RUNNER_TEMP/duwm1674"
+          cp "$APK" "$RUNNER_TEMP/duwm1674/DUWM-1674-FIX1.apk"
+      - name: Verify actual compiled features, package version and APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_APK'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import hashlib,os,subprocess
+          apk=Path(os.environ['RUNNER_TEMP'])/'duwm1674/DUWM-1674-FIX1.apk'
+          assert apk.is_file() and apk.stat().st_size>150000,'Installable APK not produced'
+          with ZipFile(apk) as z:
+              assert z.testzip() is None
+              names=z.namelist()
+              for asset in ('AndroidManifest.xml','classes.dex','assets/naturalearth_coasts.txt',
+                            'assets/duwm_country_borders_wdbii.txt','assets/duwm_1674_release_notes.json'):
+                  assert asset in names,('Asset missing from APK',asset)
+              dex=b''.join(z.read(name) for name in names if name.endswith('.dex'))
+              for cls in (b'Duwm1674UnifiedReceipts',b'Duwm1674MaritimeRefresh',b'Duwm1674CommandDeckActivity',b'Duwm1674SignalBoardView',
+                          b'OperationsGlobeView',b'Duwm1670FlightMapActivity',b'GevMarineActivity',
+                          b'Duwm1670NewsAtlasActivity',b'MediaDeskActivity',b'NativeMediaActivity',
+                          b'Duwm1671Share',b'RunningballV25GlobalAircraftData',
+                          b'Duwm1671SourceStatusActivity',b'Duwm1669SourceDirectoryActivity'):
+                  assert cls in dex,('Required app class missing',cls)
+          sdk=Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(sdk/'apksigner'),'verify',str(apk)],check=True)
+          details=subprocess.check_output([str(sdk/'aapt'),'dump','badging',str(apk)],text=True)
+          assert "versionCode='167401'" in details,details[:900]
+          assert "versionName='1674'" in details
+          assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in details
+          assert 'Duwm1674CommandDeckActivity' in details, '1674 must be the actual APK launcher'
+          checksum=hashlib.sha256(apk.read_bytes()).hexdigest()
+          (apk.parent/'SHA256SUMS.txt').write_text(checksum+'  DUWM-1674-FIX1.apk\n')
+          print('PASS native signed 1674 APK, changed launcher, source-backed UI and specialist desks')
+          PY_APK
+      - name: Publish verified installable 1674 APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1674-FIX1-INSTALLABLE-APK
+          path: |
+            ${{ runner.temp }}/duwm1674/DUWM-1674-FIX1.apk
+            ${{ runner.temp }}/duwm1674/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+      - name: Report verified scope and real-time limitations
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### DUWM 1674.1 Data-Flow Repair'
+            echo '1674 ships a visibly changed default launcher, a modified globe and source-age visualization.'
+            echo 'Aircraft position refresh remains subject to provider quotas. Vessel tracks require actual AIS position pairs.'
+            echo 'TV, radio and public cameras use the native media desk, subject to provider stream availability, licenses and compatible formats.'
+            echo 'A successful APK verifies compilation and signature, not internet uptime, actual on-phone playback or unlimited third-party data.'
+          } >> "$GITHUB_STEP_SUMMARY"
