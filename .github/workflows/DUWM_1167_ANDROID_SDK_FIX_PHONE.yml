@@ -1,0 +1,145 @@
+name: DUWM 1167 | Native Source Upgrade + Source Health + Safe Layouts
+run-name: DUWM 1167 | Verified full source, original globe, safer pages, refresh and share cards
+'on':
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/DUWM-1167-REAL-SOURCE-APK.yml
+      - DUWM-1167-REAL-ANDROID-SOURCE.zip
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: duwm1167-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    name: Verify, compile and publish real DUWM 1167 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - name: Checkout actual 1167 source ZIP and workflow
+        uses: actions/checkout@v4
+      - name: Verify exact 1167 source ZIP and extract Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s DUWM-1167-REAL-ANDROID-SOURCE.zip
+          printf '%s  %s\n' '760647faf86def9e8b28baf3aa59b0fa2d6b52686a0919737d03f9c3e3af15ee' 'DUWM-1167-REAL-ANDROID-SOURCE.zip' | sha256sum -c -
+          unzip -t 'DUWM-1167-REAL-ANDROID-SOURCE.zip' | tail -2
+          mkdir -p "$RUNNER_TEMP/duwm1167src"
+          unzip -q 'DUWM-1167-REAL-ANDROID-SOURCE.zip' -d "$RUNNER_TEMP/duwm1167src"
+          test -f "$RUNNER_TEMP/duwm1167src/DUWM-1167-ANDROID-SOURCE/app/build.gradle.kts"
+          echo "PROJECT=$RUNNER_TEMP/duwm1167src/DUWM-1167-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Use preinstalled Android SDK and install only required packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GitHub ubuntu-24.04 already provides Android command-line tools.
+          # setup-android@v3 implicitly requested the retired package "tools" and failed.
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          if [ ! -d "$SDK_ROOT" ]; then
+            echo "Android SDK root not found: $SDK_ROOT" >&2
+            exit 1
+          fi
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then
+            SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          fi
+          test -n "$SDK_MANAGER" && test -x "$SDK_MANAGER"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          "$SDK_MANAGER" --version
+          yes | "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install \
+            "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          test -f "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+          echo "Android API 36 and build-tools 36.0.0 are ready"
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Verify real changes and protected original globe
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          # ZIP archives may lack executable bits; regression scripts launch nested scripts.
+          find scripts -type f -name '*.sh' -exec chmod +x {} +
+          python3 verification/check_source.py
+          python3 verification/check_detailed_globe.py
+          python3 verification/check_1167_source.py
+          bash scripts/verify-1-2-20-2-20-full-regression.sh
+          echo 'PASS: native source, 1167 changes, protected globe, script permissions, source accountability.'
+      - name: Compile the actual 1167 Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+          mkdir -p "$RUNNER_TEMP/duwm1167"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm1167/DUWM-1167.apk"
+      - name: Check APK signature, app version and actual compiled features
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_APK_GATE'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import os,subprocess,hashlib
+          apk=Path(os.environ['RUNNER_TEMP'])/'duwm1167/DUWM-1167.apk'
+          assert apk.is_file() and apk.stat().st_size>150000, 'Compiled APK missing or suspiciously small'
+          with ZipFile(apk) as a:
+              assert a.testzip() is None,'APK ZIP corrupt'
+              names=a.namelist()
+              assert 'AndroidManifest.xml' in names and 'classes.dex' in names
+              for asset in ('assets/duwm_place_map.html','assets/naturalearth_coasts.txt'):
+                  assert asset in names, 'Missing real globe/map asset: '+asset
+              html=a.read('assets/duwm_place_map.html')
+              for token in (b'tile.openstreetmap.org',b'window.duwmReceive',b'window.duwmRenderStatus'):
+                  assert token in html, 'Missing verified geographic renderer'
+              dex=b''.join(a.read(n) for n in names if n.endswith('.dex'))
+              for token in (b'OperationsGlobeView',b'SatelliteMapView',b'DuwmLiveWallpaperService',
+                            b'Duwm1167SafeArea',b'Duwm1166RecordsActivity',b'Duwm1166RecordChart',
+                            b'Duwm1166RadioAtlasActivity',b'Duwm1166PortraitCard',
+                            b'Duwm1166NewsDeskActivity',b'Duwm1166ArticleActivity',
+                            b'DuwmWorldIntelligenceActivity',b'MediaDeskActivity',b'DuwmPlaceMapActivity'):
+                  assert token in dex, 'Missing compiled native feature: '+str(token)
+          sdk=Path(os.environ['ANDROID_HOME'])/'build-tools'
+          available=sorted([v for v in sdk.iterdir() if (v/'aapt').is_file() and (v/'apksigner').is_file()],reverse=True)
+          assert available, 'Missing Android build tools'
+          subprocess.run([str(available[0]/'apksigner'),'verify',str(apk)],check=True)
+          info=subprocess.check_output([str(available[0]/'aapt'),'dump','badging',str(apk)],text=True)
+          assert "versionCode='116700'" in info and "versionName='1167'" in info
+          assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in info
+          (apk.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  DUWM-1167.apk\n')
+          print('PASS: signed real native Android APK, DUWM 1167 identity, safe layout and protected map/globe classes')
+          PY_APK_GATE
+      - name: Publish verified DUWM 1167 installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1167-VERIFIED-INSTALLABLE-APK
+          path: |
+            ${{ runner.temp }}/duwm1167/DUWM-1167.apk
+            ${{ runner.temp }}/duwm1167/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+      - name: Report honest build and provider verification boundaries
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## DUWM 1167 — full native Android source upgrade'
+            echo 'Source is pinned by SHA-256. Scripts, protected globe and 1167 functionality are checked before compilation.'
+            echo 'APK is published only after a successful build, signature, actual DEX class and version verification.'
+            echo 'A green build does not prove a broadcaster/aircraft/AIS provider will respond or permit in-app playback on a physical phone.'
+            echo 'No simulated positions, synthetic articles, unauthorized live cameras or guaranteed worldwide AIS are claimed.'
+          } >> "$GITHUB_STEP_SUMMARY"
