@@ -1,0 +1,134 @@
+name: DUWM 1669 | Global 200 Source Directory APK
+run-name: DUWM 1669 | 50 camera + 50 TV + 50 news + 50 maritime sources, original globe retained
+'on':
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/DUWM-1669-REAL-SOURCE-APK.yml
+      - DUWM-1669-REAL-ANDROID-SOURCE.zip
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: duwm-1669-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    name: Build actual DUWM 1669 Android source with 200-source directory and verify APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - name: Checkout full Android source archive
+        uses: actions/checkout@v4
+      - name: Verify source identity, integrity and extract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s DUWM-1669-REAL-ANDROID-SOURCE.zip
+          printf '%s  %s\n' 'f767b80c0a1792e3f33b50b51d012939655902b3465f3b70ca5fc53b447118a1' 'DUWM-1669-REAL-ANDROID-SOURCE.zip' | sha256sum --check
+          unzip -t DUWM-1669-REAL-ANDROID-SOURCE.zip | tail -2
+          mkdir -p "$RUNNER_TEMP/duwm1669_source"
+          unzip -q DUWM-1669-REAL-ANDROID-SOURCE.zip -d "$RUNNER_TEMP/duwm1669_source"
+          test -f "$RUNNER_TEMP/duwm1669_source/DUWM-1669-ANDROID-SOURCE/app/build.gradle.kts"
+          echo "PROJECT=$RUNNER_TEMP/duwm1669_source/DUWM-1669-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Use GitHub-provided Android SDK and install API 36 only
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then
+            SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null)"
+          fi
+          test -x "$SDK_MANAGER"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          "$SDK_MANAGER" --version
+          yes | "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+          "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install \
+            "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          test -f "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+      - name: Install Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Verify 1167 protections and actual 1669 source upgrades
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          find scripts -type f -name '*.sh' -exec chmod +x {} +
+          python3 verification/check_source.py
+          python3 verification/check_detailed_globe.py
+          python3 verification/check_1167_source.py
+          python3 verification/check_1668_source.py
+          python3 verification/check_1669_source.py
+          bash scripts/verify-1-2-20-2-20-full-regression.sh
+      - name: Compile real DUWM 1669 Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+          mkdir -p "$RUNNER_TEMP/duwm1669"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm1669/DUWM-1669.apk"
+      - name: Check compiled globe, native lens, package version and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_APK'
+          import hashlib,os,subprocess
+          from pathlib import Path
+          from zipfile import ZipFile
+          apk=Path(os.environ['RUNNER_TEMP'])/'duwm1669/DUWM-1669.apk'
+          assert apk.is_file() and apk.stat().st_size>150000, 'No real compiled Android APK'
+          with ZipFile(apk) as z:
+              assert z.testzip() is None, 'APK archive broken'
+              names=z.namelist()
+              assert 'AndroidManifest.xml' in names and 'classes.dex' in names
+              assert 'assets/naturalearth_coasts.txt' in names
+              assert 'assets/duwm_place_map.html' in names
+              assert 'assets/duwm_global_200_sources.json' in names
+              dex=b''.join(z.read(n) for n in names if n.endswith('.dex'))
+              for cls in (b'OperationsGlobeView',b'SatelliteMapView',b'DuwmLiveWallpaperService',
+                          b'Duwm1668GeopoliticalLensActivity',b'Duwm1669SourceDirectoryActivity',b'DuwmGeoObservationStore',
+                          b'Duwm1166NewsDeskActivity',b'Duwm1166PortraitCard',
+                          b'Duwm1166RadioAtlasActivity',b'MediaDeskActivity',
+                          b'DuwmWorldIntelligenceActivity',b'DuwmPlaceMapActivity'):
+                  assert cls in dex, f'Missing compiled class {cls!r}'
+          build_tools=Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(build_tools/'apksigner'),'verify',str(apk)],check=True)
+          badging=subprocess.check_output([str(build_tools/'aapt'),'dump','badging',str(apk)],text=True)
+          assert "versionCode='166900'" in badging and "versionName='1669'" in badging
+          assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in badging
+          (apk.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  DUWM-1669.apk\n')
+          print('PASS verified signed DUWM 1669 APK with compiled Geopolitical Lens and preserved globe')
+          PY_APK
+      - name: Publish real installable DUWM 1669 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1669-VERIFIED-INSTALLABLE-APK
+          path: |
+            ${{ runner.temp }}/duwm1669/DUWM-1669.apk
+            ${{ runner.temp }}/duwm1669/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+      - name: Honest source and device limits
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## DUWM 1669 actual source build'
+            echo 'No fake activity, simulated conflict points or guaranteed external media streams.'
+            echo 'The Geo Lens shows observed fixes; the 200-source directory lists CANDIDATES, not active live connections.'
+            echo 'A green compile proves build and APK checks, not network/provider availability or successful playback on a phone.'
+          } >> "$GITHUB_STEP_SUMMARY"
