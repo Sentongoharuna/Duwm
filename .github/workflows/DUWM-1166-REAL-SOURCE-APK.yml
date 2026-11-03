@@ -1,0 +1,114 @@
+name: DUWM 1166 | Full Native Source + Real News Cards + Intelligence Desks
+run-name: DUWM 1166 | Source-backed signal LEDs, 9:16 cards, regional feeds, pages and maps
+'on':
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/DUWM-1166-REAL-SOURCE-APK.yml
+      - DUWM-1166-REAL-ANDROID-SOURCE.zip
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Build and verify source-based DUWM 1166 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 105
+    steps:
+      - name: Checkout actual 1166 source ZIP and workflow
+        uses: actions/checkout@v4
+      - name: Verify source ZIP checksum and decompress exact Android source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s DUWM-1166-REAL-ANDROID-SOURCE.zip
+          echo '1c6bfd884fc077c1d67e3cd910c2891a8f7dd1b78ef9f35c1768e884d9f992bd  DUWM-1166-REAL-ANDROID-SOURCE.zip' | sha256sum --check
+          unzip -t DUWM-1166-REAL-ANDROID-SOURCE.zip | tail -2
+          mkdir -p "$RUNNER_TEMP/duwm1166src"
+          unzip -q DUWM-1166-REAL-ANDROID-SOURCE.zip -d "$RUNNER_TEMP/duwm1166src"
+          test -f "$RUNNER_TEMP/duwm1166src/DUWM-1166-ANDROID-SOURCE/app/build.gradle.kts"
+          echo "PROJECT=$RUNNER_TEMP/duwm1166src/DUWM-1166-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Verify actual source changes and original globe integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_detailed_globe.py
+          python3 verification/check_1166_source.py
+          bash scripts/verify-1-2-20-2-20-full-regression.sh
+          echo 'All source gates pass; no on-phone or internet playback claim made.'
+      - name: Compile the real Android source into an APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+          mkdir -p "$RUNNER_TEMP/duwm1166"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm1166/DUWM-1166.apk"
+      - name: Verify compiled classes, card renderer, map assets, version and APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY_1166'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import os,subprocess,hashlib
+          apk=Path(os.environ['RUNNER_TEMP'])/'duwm1166/DUWM-1166.apk'
+          assert apk.is_file() and apk.stat().st_size>150000, 'Real APK not compiled'
+          with ZipFile(apk) as z:
+              assert z.testzip() is None
+              files=z.namelist()
+              assert 'AndroidManifest.xml' in files and 'classes.dex' in files
+              for asset in ['assets/duwm_place_map.html','assets/naturalearth_coasts.txt']:
+                  assert asset in files,('Missing embedded real map data',asset)
+              html=z.read('assets/duwm_place_map.html')
+              for token in [b'tile.openstreetmap.org',b'window.duwmReceive',b'window.duwmRenderStatus']:
+                  assert token in html,('Real map renderer missing',token)
+              dex=b''.join(z.read(n) for n in files if n.endswith('.dex'))
+              for token in [b'OperationsGlobeView',b'SatelliteMapView',b'DuwmLiveWallpaperService',
+                            b'Duwm1166DirectoryActivity',b'Duwm1166NewsDeskActivity',
+                            b'Duwm1166PortraitCard',b'Duwm1166SignalView',b'Duwm1166RecordsActivity',
+                            b'Duwm1166RecordChart',b'Duwm1166RadioAtlasActivity',
+                            b'Duwm1166CustomFeedActivity',b'Duwm1166ArticleActivity',
+                            b'DuwmWorldIntelligenceActivity',b'MediaDeskActivity',b'V115941ShareCards']:
+                  assert token in dex,('Feature missing from real compiled APK',token)
+          sdk=Path(os.environ['ANDROID_HOME'])/'build-tools'
+          versions=sorted((p for p in sdk.iterdir() if (p/'apksigner').is_file() and (p/'aapt').is_file()),reverse=True)
+          assert versions,'Android SDK build-tools missing'
+          subprocess.run([str(versions[0]/'apksigner'),'verify',str(apk)],check=True)
+          badging=subprocess.check_output([str(versions[0]/'aapt'),'dump','badging',str(apk)],text=True)
+          assert "versionCode='116600'" in badging and "versionName='1166'" in badging
+          assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in badging
+          (apk.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  DUWM-1166.apk\n')
+          print('PASS real signed 1166 APK with original detailed globe, source-backed desks and social portrait card classes')
+          PY_VERIFY_1166
+      - name: Publish verified DUWM 1166 installable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1166-REAL-SOURCE-APK
+          path: |
+            ${{ runner.temp }}/duwm1166/DUWM-1166.apk
+            ${{ runner.temp }}/duwm1166/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+      - name: Report verification boundaries
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### DUWM 1166 source-based release'
+            echo 'APK artifact is uploaded only if Java compilation, actual DEX features, manifest version and signature checks pass.'
+            echo 'An APK compile does NOT prove that a CDN, publisher, AIS, radio, camera or mobile GPU is available on a phone.'
+            echo 'The original detailed globe, 9:16 portrait news cards, independent source lights, and dedicated desk source code are protected by source and APK gates.'
+          } >> "$GITHUB_STEP_SUMMARY"
