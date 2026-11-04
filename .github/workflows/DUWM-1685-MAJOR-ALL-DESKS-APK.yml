@@ -1,0 +1,151 @@
+name: DUWM 1685 | MAJOR ALL-DESKS INTELLIGENCE & 9:16 SHARE | Original Command
+run-name: DUWM 1685 | New 19-desk consoles, genuine receipt charts and 1080x1920 cards
+'on':
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/DUWM-1685-MAJOR-ALL-DESKS-APK.yml
+      - DUWM-1685-MAJOR-ALL-DESKS-SOURCE.zip
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: duwm-1685-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    name: Validate and compile improved original DUWM 1685 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - name: Checkout exact DUWM 1685 source and workflow
+        uses: actions/checkout@v4
+      - name: Check exact 1684 source checksum and extract Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s DUWM-1685-MAJOR-ALL-DESKS-SOURCE.zip
+          echo '25ee26327d61ff32376e089ba79c63d9874985d23e2ddecf66d08d6ee6ac0311  DUWM-1685-MAJOR-ALL-DESKS-SOURCE.zip' | sha256sum -c -
+          unzip -t DUWM-1685-MAJOR-ALL-DESKS-SOURCE.zip | tail -2
+          mkdir -p "$RUNNER_TEMP/duwm1685src"
+          unzip -q DUWM-1685-MAJOR-ALL-DESKS-SOURCE.zip -d "$RUNNER_TEMP/duwm1685src"
+          test -f "$RUNNER_TEMP/duwm1685src/DUWM-1685-ANDROID-SOURCE/app/build.gradle.kts"
+          echo "PROJECT=$RUNNER_TEMP/duwm1685src/DUWM-1685-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Locate preinstalled Android SDK and ensure API 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT" || { echo 'Android SDK missing'; exit 1; }
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then
+            SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+          fi
+          test -n "$SDK_MANAGER" && test -x "$SDK_MANAGER"
+          if [ ! -f "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            yes | timeout 120 "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+            timeout 600 "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          fi
+          test -f "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Verify original single globe, substantial on-screen changes and full-screen desk coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_1674_fix1_compiler.py
+          python3 verification/check_1683_real_fix_modes.py
+          python3 verification/check_1683_all_detail_desks.py
+          python3 verification/check_1683_fullscreen.py
+          python3 verification/check_1684_full_desks.py
+          python3 verification/check_1685_major_upgrade.py
+          mkdir -p "$RUNNER_TEMP/duwm1685fix"
+          javac -d "$RUNNER_TEMP/duwm1685fix" \
+            app/src/main/java/com/sentongoharuna/worldsituationroom/Duwm1683FixTracker.java \
+            verification/Duwm1683FixTrackerTest.java
+          java -cp "$RUNNER_TEMP/duwm1685fix" com.sentongoharuna.worldsituationroom.Duwm1683FixTrackerTest
+          python3 verification/check_1679_geometry.py
+          mkdir -p "$RUNNER_TEMP/duwm1685syntax"
+          javac -d "$RUNNER_TEMP/duwm1685syntax" verification/JavaSyntaxCheck.java
+          java -cp "$RUNNER_TEMP/duwm1685syntax" JavaSyntaxCheck
+          mkdir -p "$RUNNER_TEMP/duwm1685geo"
+          javac -d "$RUNNER_TEMP/duwm1685geo" \
+            app/src/main/java/com/sentongoharuna/worldsituationroom/Duwm1676GeoMath.java \
+            verification/Duwm1676GeoMathTest.java
+          java -cp "$RUNNER_TEMP/duwm1685geo" com.sentongoharuna.worldsituationroom.Duwm1676GeoMathTest
+      - name: Compile Android source into installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:compileDebugJavaWithJavac :app:assembleDebug --stacktrace
+          APK="$PROJECT/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          mkdir -p "$RUNNER_TEMP/duwm1685originalapk"
+          cp "$APK" "$RUNNER_TEMP/duwm1685originalapk/DUWM-1685-MAJOR-ALL-DESKS.apk"
+      - name: Validate compiled UI classes, app version and APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_APK'
+          from pathlib import Path
+          from zipfile import ZipFile
+          import hashlib,os,subprocess
+          apk=Path(os.environ['RUNNER_TEMP'])/'duwm1685originalapk/DUWM-1685-MAJOR-ALL-DESKS.apk'
+          assert apk.is_file() and apk.stat().st_size>150000,'Installable APK missing'
+          with ZipFile(apk) as z:
+              assert z.testzip() is None
+              entries=z.namelist()
+              for asset in ('AndroidManifest.xml','classes.dex','assets/duwm_1683_real_fix_modes.json',
+                            'assets/duwm_country_borders_wdbii.txt'):
+                  assert asset in entries,('Asset not packaged',asset)
+              dex=b''.join(z.read(name) for name in entries if name.endswith('.dex'))
+              for cls in (b'Duwm1683FullScreen',b'Duwm1683DeskFullScreenActivity',b'DuwmUnifiedTheme',b'SatelliteMapView',b'SourceMatrixView',b'Duwm1678VisualKit',b'PulsePanel',b'MediaDeskActivity',
+                          b'GevMarineActivity',b'GevMarineRadarView',b'Duwm1671SectorActivity',
+                          b'Duwm1671TrendView',b'Duwm1670FlightMapActivity',
+                          b'Duwm1670WorldMapView',b'DuwmOptionsActivity',b'MainActivity',
+                          b'Duwm1676GeoWatchActivity',b'Duwm1675EvidenceVaultActivity',b'Duwm1683FixTracker',b'Duwm1683DeskCatalog',b'Duwm1683DeskDetailKit',b'Duwm1684DeskDiagnostics',b'Duwm1684PageUpgrade',b'Duwm1684SectorVisual',b'Duwm1684ShareCard',b'Duwm1685ShareCard',b'Duwm1685PageUpgrade',b'Duwm1685MissionBoard',b'Duwm1685ReceiptHistory',b'Duwm1685ReceiptChart',b'DuWorldApplication'):
+                  assert cls in dex,('Changed class missing from APK',cls)
+          build=Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(build/'apksigner'),'verify',str(apk)],check=True)
+          badge=subprocess.check_output([str(build/'aapt'),'dump','badging',str(apk)],text=True)
+          assert "versionCode='168500'" in badge,badge[:800]
+          assert "versionName='1685'" in badge,badge[:800]
+          assert "name='com.sentongoharuna.worldsituationroom.rb2live25'" in badge
+          assert "launchable-activity: name='com.sentongoharuna.worldsituationroom.MainActivity'" in badge,'Original Command Center is not the APK launcher'
+          (apk.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  DUWM-1685-MAJOR-ALL-DESKS.apk\n')
+          print('PASS DUWM 1685: 19 upgraded native desks, authentic receipt-only charts, 1080x1920 share cards, original globe, signed APK')
+          PY_APK
+      - name: Publish successful DUWM 1685 APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1685-MAJOR-ALL-DESKS-APK
+          path: |
+            ${{ runner.temp }}/duwm1685originalapk/DUWM-1685-MAJOR-ALL-DESKS.apk
+            ${{ runner.temp }}/duwm1685originalapk/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+      - name: State verification boundaries
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### DUWM 1685: MAJOR visible all-pages redesign, 19 original native desks with 1685 operation consoles'
+            echo 'Main dock routes to original native activities; all 19 have a new command console with a collapsible chart of genuine distinct provider receipts. Detail dossiers and options hub include provider diagnostics. The installed original MainActivity retains one SatelliteMapView. Cards are 1080x1920.'
+            echo 'Live Fix Watch and Saved Fix Tour remain distinct. The full-screen details activity reports cached provider status, actual distinct receipt history, and provenance; unavailable feeds are not fabricated.'
+            echo 'A successful compile does not prove device rendering, video availability, or network reachability: those need phone checks. No synthetic data has been added.'
+          } >> "$GITHUB_STEP_SUMMARY"
