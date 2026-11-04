@@ -1,0 +1,117 @@
+name: DUWM 1694 — compile actual full source to verified APK
+run-name: DUWM 1694 | Full latest-source Android APK validation
+'on':
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/DUWM-1694-COMPLETE-ANDROID-APK.yml
+      - DUWM-1694-COMPLETE-ANDROID-SOURCE.zip
+permissions:
+  contents: read
+concurrency:
+  group: duwm1694-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build-1694:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository source
+        uses: actions/checkout@v4
+      - name: Require exact 1694 source archive, not inherited 1678 or 1693 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'f12045364daf8d8aad3ce24701303cff5cafe79f38a80866b2382fe18e04e669  DUWM-1694-COMPLETE-ANDROID-SOURCE.zip' | sha256sum -c -
+          unzip -t DUWM-1694-COMPLETE-ANDROID-SOURCE.zip | tail -1
+          mkdir -p "$RUNNER_TEMP/duwm1694"
+          unzip -q DUWM-1694-COMPLETE-ANDROID-SOURCE.zip -d "$RUNNER_TEMP/duwm1694"
+          PROJECT="$RUNNER_TEMP/duwm1694/DUWM-1694-ANDROID-SOURCE"
+          test -f "$PROJECT/verification/check_1694_release.py"
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configure Android SDK 36 and build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then
+            SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+          fi
+          test -n "$SDK_MANAGER" && test -x "$SDK_MANAGER"
+          if [ ! -f "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            yes | timeout 180 "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+            timeout 600 "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          fi
+          test -f "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+      - name: Install Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Verify source lineage, original globe, 1694 changes and Java parsing
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_1694_release.py
+          mkdir -p "$RUNNER_TEMP/duwm1694-syntax"
+          javac -d "$RUNNER_TEMP/duwm1694-syntax" verification/JavaSyntaxCheck.java
+          java -cp "$RUNNER_TEMP/duwm1694-syntax" JavaSyntaxCheck
+      - name: Compile native Android source into an actual installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          mkdir -p "$RUNNER_TEMP/duwm1694-apk"
+          cp "$APK" "$RUNNER_TEMP/duwm1694-apk/DUWM-1694.apk"
+      - name: Verify compiled APK identity, signature, runtime classes and source charts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'DUWM_1694_APK_CHECK'
+          import os,hashlib,subprocess
+          from pathlib import Path
+          from zipfile import ZipFile
+          apk=Path(os.environ['RUNNER_TEMP'])/'duwm1694-apk/DUWM-1694.apk'
+          assert apk.is_file() and apk.stat().st_size>150000,'Missing real APK'
+          with ZipFile(apk) as f:
+              assert f.testzip() is None,'Invalid APK zip'
+              names=f.namelist()
+              for item in ['AndroidManifest.xml','classes.dex','assets/duwm_release_ui.json']:
+                  assert item in names,('Missing runtime asset',item)
+              dex=b''.join(f.read(n) for n in names if n.endswith('.dex'))
+              for cls in [b'MainActivity',b'SatelliteMapView',b'GevMarineActivity',b'Duwm1670FlightMapActivity',b'Duwm1166NewsDeskActivity',b'Duwm1166RadioAtlasActivity',b'Duwm1690EvidenceBars',b'Duwm1687WorkspaceActivity']:
+                  assert cls in dex,('Missing compiled class',cls)
+          sdk=Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(sdk/'apksigner'),'verify','--verbose',str(apk)],check=True)
+          badging=subprocess.check_output([str(sdk/'aapt'),'dump','badging',str(apk)],text=True)
+          for item in ["versionCode='169400'","versionName='1694'","application-label:'DUWM 1694 • DEVELOP.UGANDA'","name='com.sentongoharuna.worldsituationroom.rb2live25'"]:
+              assert item in badging,('Stale or invalid APK identity',item)
+          h=hashlib.sha256(apk.read_bytes()).hexdigest()
+          (apk.parent/'SHA256SUMS.txt').write_text(h+'  DUWM-1694.apk\n')
+          print('PASS: compiled 1694 APK, correct label, expected classes and valid cryptographic signature')
+          DUWM_1694_APK_CHECK
+      - name: Publish only APK after every check passed
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1694-VERIFIED-ANDROID-APK
+          path: |
+            ${{ runner.temp }}/duwm1694-apk/DUWM-1694.apk
+            ${{ runner.temp }}/duwm1694-apk/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
