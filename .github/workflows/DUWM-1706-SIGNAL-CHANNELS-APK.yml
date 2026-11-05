@@ -1,0 +1,168 @@
+name: "DUWM 1706 | Live source channels, active globe halo, running wires"
+run-name: "DUWM 1706 | Compile, install, verify original single globe"
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/DUWM-1706-SIGNAL-CHANNELS-APK.yml'
+      - 'DUWM-1706-SIGNAL-CHANNELS-SOURCE.zip'
+permissions:
+  contents: read
+concurrency:
+  group: duwm-1706-signal-channels-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    steps:
+      - name: Checkout original 1706 Android source ZIP
+        uses: actions/checkout@v4
+      - name: Verify source archive SHA256 and exact Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '6d3add0954e27763dd7d938d311a47efa2fc6a751b1ac91f6d7d3fc7209e443d  DUWM-1706-SIGNAL-CHANNELS-SOURCE.zip' | sha256sum --check
+          unzip -t 'DUWM-1706-SIGNAL-CHANNELS-SOURCE.zip' | tail -n 1
+          unzip -q 'DUWM-1706-SIGNAL-CHANNELS-SOURCE.zip' -d "$RUNNER_TEMP/duwm1706"
+          PROJECT="$RUNNER_TEMP/duwm1706/DUWM-1706-ANDROID-SOURCE"
+          test -f "$PROJECT/verification/check_1706.py"
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK API 36 and signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then
+            SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit 2>/dev/null || true)"
+          fi
+          test -n "$SDK_MANAGER" && test -x "$SDK_MANAGER"
+          if [ ! -f "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            timeout 600 "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          fi
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+      - name: Install Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Check 1706 live pulse, evidence triage, source lineage and single original globe
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_1706.py
+          python3 verification/check_1706_visual_and_channels.py
+          mkdir -p "$RUNNER_TEMP/duwm1706-parser"
+          javac -d "$RUNNER_TEMP/duwm1706-parser" verification/JavaSyntaxCheck.java
+          java -cp "$RUNNER_TEMP/duwm1706-parser" JavaSyntaxCheck
+      - name: Compile Build 1706 Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p "$RUNNER_TEMP/duwm1706-output"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm1706-output/DUWM-1706.apk"
+      - name: Verify signed APK identity, 1706 native pulse filters and original globe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYAPK'
+          import hashlib,os,subprocess,zipfile
+          from pathlib import Path
+          apk=Path(os.environ['RUNNER_TEMP'])/'duwm1706-output/DUWM-1706.apk'
+          assert apk.is_file() and apk.stat().st_size>150000
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              dex=b''.join(z.read(k) for k in z.namelist() if k.startswith('classes') and k.endswith('.dex'))
+              for token in [b'MainActivity',b'SatelliteMapView',b'Duwm1687WorkspaceActivity',
+                            b'GevMarineActivity',b'Duwm1166NewsDeskActivity',b'MediaDeskActivity',
+                            b'set1702SourceLens',b'show1702SourceLensPicker',b'markerPriority1702', b'build1703WorldWatchPanel',
+                            b'show1703WorldWatch', b'collect1703WorldWatch', b'open1703WatchSignal', b'filter1704WorldWatch', b'show1704Receipt', b'show1704GroupPicker', b'show1704SortPicker', b'matches1705Evidence', b'matches1705SourceRegion', b'show1705EvidencePicker', b'show1705RegionPicker', b'render1705Pulse', b'count1705Category',
+                            b'SignalTickerRailView', b'draw1705ReceivedFixLines',
+                            b'draw1705SourceLightBeacons', b'draw1706SourceActivityHalo',
+                            b'show1706SignalConsole', b'show1706TickerSpeed', b'set1706Channel', b'set1706Speed']:
+                  assert token in dex,'Missing compiled feature: '+str(token)
+          sdk=Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(sdk/'apksigner'),'verify','--verbose',str(apk)],check=True)
+          badge=subprocess.check_output([str(sdk/'aapt'),'dump','badging',str(apk)],text=True)
+          for expected in ["versionCode='170600'", "versionName='1706'",
+                           "name='com.sentongoharuna.worldsituationroom.rb2live25'",
+                           "application-label:'DUWM 1706 • DEVELOP.UGANDA'"]:
+              assert expected in badge,(expected,badge[:900])
+          (apk.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  '+apk.name+'\n')
+          print('PASS actual compiled 1706 APK identity, WORLD WATCH newsroom, signature and intact original globe')
+          PYAPK
+      - name: Publish compiled APK separately before emulator launch verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1706-COMPILED-APK-LAUNCH-UNVERIFIED
+          path: ${{ runner.temp }}/duwm1706-output/DUWM-1706.apk
+          retention-days: 30
+          if-no-files-found: error
+      - name: Allow Linux KVM hardware acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm || { echo 'KVM unavailable on GitHub runner' >&2; exit 1; }
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Write persistent bash script for emulator installation and launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/duwm1706-launch.sh" <<'LAUNCH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="${RUNNER_TEMP:?}/duwm1706-output/DUWM-1706.apk"
+          PKG='com.sentongoharuna.worldsituationroom.rb2live25'
+          test -s "$APK" && [[ "$APK" == *.apk ]]
+          adb wait-for-device
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          adb install -r "$APK"
+          adb logcat -c
+          adb shell am start -W -n "$PKG/com.sentongoharuna.worldsituationroom.MainActivity"
+          sleep 20
+          adb shell pidof "$PKG" >/dev/null
+          adb exec-out screencap -p > "${RUNNER_TEMP}/duwm1706-output/01-ORIGINAL-GLOBE.png"
+          test -s "${RUNNER_TEMP}/duwm1706-output/01-ORIGINAL-GLOBE.png"
+          adb logcat -d -s AndroidRuntime:E > "${RUNNER_TEMP}/duwm1706-output/02-RUNTIME-ERRORS.txt" || true
+          if grep -q 'FATAL EXCEPTION' "${RUNNER_TEMP}/duwm1706-output/02-RUNTIME-ERRORS.txt"; then
+            cat "${RUNNER_TEMP}/duwm1706-output/02-RUNTIME-ERRORS.txt" >&2
+            exit 1
+          fi
+          echo 'PASS actual original globe installed and launched; 1706 APK tested in emulator'
+          LAUNCH
+          chmod +x "$RUNNER_TEMP/duwm1706-launch.sh"
+          bash -n "$RUNNER_TEMP/duwm1706-launch.sh"
+      - name: Android emulator - install and launch original single globe
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          disable-linux-hw-accel: false
+          emulator-boot-timeout: 600
+          script: bash "$RUNNER_TEMP/duwm1706-launch.sh"
+      - name: Publish emulator-verified Build 1706 APK and screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1706-SIGNAL-CHANNELS-VERIFIED-APK-SCREENSHOT
+          path: ${{ runner.temp }}/duwm1706-output/
+          retention-days: 30
+          if-no-files-found: error
