@@ -1,0 +1,115 @@
+name: "DUWM 1725 | Global UI High Contrast and Real Source Health"
+run-name: "DUWM 1725 | Compile original globe + high-contrast source health throughout entire UI"
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/DUWM-1725-UNIFIED-HIGH-CONTRAST-APK.yml'
+      - 'DUWM-1725-UNIFIED-HIGH-CONTRAST-SOURCE.zip'
+permissions:
+  contents: read
+concurrency:
+  group: duwm-1725-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build-1725:
+    name: Compile and verify genuine DUWM 1725 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - name: Checkout DUWM repository
+        uses: actions/checkout@v4
+      - name: Verify exact complete source SHA-256 and extract
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'd026b89089561cc8a330fb83e21f83d584dcb5c3556837414b27bf23a647147f  DUWM-1725-UNIFIED-HIGH-CONTRAST-SOURCE.zip' | sha256sum -c -
+          unzip -t DUWM-1725-UNIFIED-HIGH-CONTRAST-SOURCE.zip | tail -n 1
+          mkdir -p "$RUNNER_TEMP/duwm1725"
+          unzip -q DUWM-1725-UNIFIED-HIGH-CONTRAST-SOURCE.zip -d "$RUNNER_TEMP/duwm1725"
+          test -s "$RUNNER_TEMP/duwm1725/DUWM-1725-ANDROID-SOURCE/verification/check_1725.py"
+          echo "DUWM_PROJECT=$RUNNER_TEMP/duwm1725/DUWM-1725-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: Configure JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Ensure Android SDK and signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -s "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            timeout 600 "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          fi
+          test -s "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+      - name: Configure Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Verify original globe, reference colours, Java repair and real receipt-driven 1724 behaviour
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$DUWM_PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_1717_fix1.py
+          python3 verification/check_1715_reference_palette.py
+          python3 verification/check_1725.py
+          mkdir -p "$RUNNER_TEMP/duwm1725-parser"
+          javac -d "$RUNNER_TEMP/duwm1725-parser" verification/JavaSyntaxCheck.java
+          java -cp "$RUNNER_TEMP/duwm1725-parser" JavaSyntaxCheck
+      - name: Compile real Android DUWM 1725 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$DUWM_PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p "$RUNNER_TEMP/duwm1725-apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm1725-apk/DUWM-1725.apk"
+      - name: Verify signature, version, exact formats and actual compiled classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY'
+          import hashlib,os,pathlib,subprocess,zipfile
+          apk=pathlib.Path(os.environ['RUNNER_TEMP'])/'duwm1725-apk/DUWM-1725.apk'
+          assert apk.is_file() and apk.stat().st_size>180_000
+          with zipfile.ZipFile(apk) as zipf:
+              assert zipf.testzip() is None
+              dex=b''.join(zipf.read(n) for n in zipf.namelist() if n.startswith('classes') and n.endswith('.dex'))
+              assert dex,'Android dex missing'
+              for marker in (
+                  b'SatelliteMapView',b'Duwm1715SignalLights',b'Duwm1716SignalCenterActivity',
+                  b'Duwm1717ReceiptAuditActivity',b'Duwm1718MonitorsCamActivity',
+                  b'Duwm1718GlobalDiscoverActivity',b'Duwm1719MyWorldActivity',
+                  b'Duwm1723GlobalWeatherActivity',b'Duwm1724GalleryPublisher',
+                  b'Duwm1724SignalFlow',b'Duwm1724SignalHistory',
+                  b'DuwmUnifiedTheme',b'Duwm1166SignalView',b'Duwm1674SignalBoardView',
+                  b'SIGNAL',b'9:10 PORTRAIT',b'16:9 LANDSCAPE',b'Movies',
+                  b'MediaMetadataRetriever',b'DUWM Monitors Cam',b'GALLERY',
+                  b'RECEIVING',b'STALE / CACHED'):
+                  assert marker in dex,('Missing compiled 1725 feature',marker)
+          sdk=pathlib.Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(sdk/'apksigner'),'verify','--verbose',str(apk)],check=True)
+          badge=subprocess.check_output([str(sdk/'aapt'),'dump','badging',str(apk)],text=True)
+          for expected in ("versionCode='172500'","versionName='1725'",
+                           "name='com.sentongoharuna.worldsituationroom.rb2live25'",
+                           "application-label:'DUWM 1725 • DEVELOP.UGANDA'"):
+              assert expected in badge,(expected,badge[:1100])
+          (apk.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  '+apk.name+'\n')
+          print('PASS: real signed DUWM 1725 APK includes ONE original globe, 9:10/16:9 recording, MediaStore Gallery export and source-driven status flow')
+          PY_VERIFY
+      - name: Publish signed DUWM 1725 APK and checksum even if emulator is unavailable
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1725-SIGNED-INSTALLABLE-APK
+          path: ${{ runner.temp }}/duwm1725-apk/
+          if-no-files-found: error
+          retention-days: 30
