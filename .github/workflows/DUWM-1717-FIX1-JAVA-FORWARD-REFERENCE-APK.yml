@@ -1,0 +1,167 @@
+name: "DUWM 1717 FIX1 | Compiler repair preserving original globe and receipt audit"
+run-name: "DUWM 1717 FIX1 | Repair illegal forward reference and compile signed APK"
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/DUWM-1717-FIX1-JAVA-FORWARD-REFERENCE-APK.yml'
+      - 'DUWM-1717-FIX1-JAVA-FORWARD-REFERENCE-SOURCE.zip'
+permissions:
+  contents: read
+concurrency:
+  group: duwm-1717-fix1-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  compile-debug-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - name: Checkout the existing DUWM repository
+        uses: actions/checkout@v4
+      - name: Restore and verify exact complete DUWM 1717 project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/duwm1717-project"
+          if [ -s DUWM-1717-FIX1-JAVA-FORWARD-REFERENCE-SOURCE.zip ]; then
+            echo 'c9f3134cd2c463df7c318b9ebb5c9a4c756e993f8897cdb09ee185b8870c3a36  DUWM-1717-FIX1-JAVA-FORWARD-REFERENCE-SOURCE.zip' | sha256sum -c -
+            unzip -t DUWM-1717-FIX1-JAVA-FORWARD-REFERENCE-SOURCE.zip | tail -n 1
+            unzip -q DUWM-1717-FIX1-JAVA-FORWARD-REFERENCE-SOURCE.zip -d "$RUNNER_TEMP/duwm1717-project"
+          else
+            echo 'Full FIX1 source not uploaded yet: applying exact verified repair to original 1717 archive'
+            echo '7f76aea61e3bd1bf025d9babda31a1e0e6559c08c2f1ddaa41f3f965c7c98760  DUWM-1717-RECEIPT-AUDIT-SOURCE.zip' | sha256sum -c -
+            unzip -t DUWM-1717-RECEIPT-AUDIT-SOURCE.zip | tail -n 1
+            unzip -q DUWM-1717-RECEIPT-AUDIT-SOURCE.zip -d "$RUNNER_TEMP/duwm1717-project"
+            python3 - <<'PY_1717_FIX'
+          import os, base64
+          from pathlib import Path
+          root=Path(os.environ['RUNNER_TEMP'])/'duwm1717-project'/'DUWM-1717-ANDROID-SOURCE'
+          p=root/'app/src/main/java/com/sentongoharuna/worldsituationroom/Duwm1715SignalLights.java'
+          s=p.read_text(encoding='utf8')
+          old='    private static final Runnable COALESCED_REFRESH = () -> {\n        SignalRail rail=visible.get();\n        if(rail!=null)rail.refresh();\n    };\n    private static java.lang.ref.WeakReference<SignalRail> visible =\n            new java.lang.ref.WeakReference<>(null);\n'
+          new='    // Declare visible before any static initializer lambda that reads it.\n    // Otherwise javac rejects COALESCED_REFRESH with `illegal forward reference`.\n    private static java.lang.ref.WeakReference<SignalRail> visible =\n            new java.lang.ref.WeakReference<>(null);\n    private static final Runnable COALESCED_REFRESH = () -> {\n        SignalRail rail=visible.get();\n        if(rail!=null)rail.refresh();\n    };\n'
+          assert s.count(old)==1, 'Expected old compile failure block not found exactly once'
+          p.write_text(s.replace(old,new),encoding='utf8')
+          (root/'verification/check_1717_fix1.py').write_bytes(base64.b64decode('IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiIxNzE3IEZJWDEgcmVncmVzc2lvbiBndWFyZCBmb3IgR2l0SHViIEFjdGlvbiBydW4gNDIyMTE4MTc3OTYuCgpTb3VyY2UgcGFyc2VyIGNoZWNrcyBwcmV2aW91c2x5IHBhc3NlZCBidXQgamF2YWMgcmVwb3J0ZWQgYW4gaWxsZWdhbCBzdGF0aWMKZm9yd2FyZCByZWZlcmVuY2UgaW4gRHV3bTE3MTVTaWduYWxMaWdodHMuamF2YTo0MC4gS2VlcCB0aGlzIGd1YXJkIGFsb25nc2lkZQpmdWxsIEFuZHJvaWQgOmFwcDphc3NlbWJsZURlYnVnIGNvbXBpbGF0aW9uIGluIEdpdEh1YiBBY3Rpb25zLgoiIiIKZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnA9KFBhdGgoX19maWxlX18pLnJlc29sdmUoKS5wYXJlbnRzWzFdIC8gJ2FwcC9zcmMvbWFpbi9qYXZhL2NvbS9zZW50b25nb2hhcnVuYS93b3JsZHNpdHVhdGlvbnJvb20vRHV3bTE3MTVTaWduYWxMaWdodHMuamF2YScpCnM9cC5yZWFkX3RleHQoZW5jb2Rpbmc9J3V0Zi04JykKYXNzZXJ0IHMuY291bnQoJ3ByaXZhdGUgc3RhdGljIGphdmEubGFuZy5yZWYuV2Vha1JlZmVyZW5jZTxTaWduYWxSYWlsPiB2aXNpYmxlJyk9PTEKYXNzZXJ0IHMuY291bnQoJ3ByaXZhdGUgc3RhdGljIGZpbmFsIFJ1bm5hYmxlIENPQUxFU0NFRF9SRUZSRVNIJyk9PTEKYXNzZXJ0IHMuaW5kZXgoJ3ByaXZhdGUgc3RhdGljIGphdmEubGFuZy5yZWYuV2Vha1JlZmVyZW5jZTxTaWduYWxSYWlsPiB2aXNpYmxlJykgPCBzLmluZGV4KCdwcml2YXRlIHN0YXRpYyBmaW5hbCBSdW5uYWJsZSBDT0FMRVNDRURfUkVGUkVTSCcpLCAnUmVncmVzc2lvbjogaWxsZWdhbCBzdGF0aWMgZm9yd2FyZCByZWZlcmVuY2UgdG8gdmlzaWJsZScKYXNzZXJ0ICdTaWduYWxSYWlsIHJhaWw9dmlzaWJsZS5nZXQoKTsnIGluIHMKYXNzZXJ0ICdVSS5wb3N0RGVsYXllZChDT0FMRVNDRURfUkVGUkVTSCwxODBMKTsnIGluIHMKYXNzZXJ0ICduZXcgamF2YS5sYW5nLnJlZi5XZWFrUmVmZXJlbmNlPD4obnVsbCknIGluIHMKYXNzZXJ0ICduZXcgU2F0ZWxsaXRlTWFwVmlldycgbm90IGluIHMsICdObyBuZXcgZ2xvYmUgcGVybWl0dGVkIGluIHNpZ25hbCByYWlsJwpwcmludCgnUEFTUyAxNzE3IEZJWDE6IHZpc2libGUgZGVjbGFyZWQgYmVmb3JlIHN0YXRpYyBydW5uYWJsZTsgc2lnbmFsIHJhaWwsIGNvYWxlc2NpbmcgYW5kIG9yaWdpbmFsIGdsb2JlIHByZXNlcnZlZCcpCg=='))
+          print('PASS applied FIX1 verified Java forward-reference repair to original 1717 source')
+          PY_1717_FIX
+          fi
+          test -s "$RUNNER_TEMP/duwm1717-project/DUWM-1717-ANDROID-SOURCE/verification/check_1717.py"
+          echo "DUWM_PROJECT=$RUNNER_TEMP/duwm1717-project/DUWM-1717-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: Configure Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Ensure Android SDK 36 and signing utilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -s "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            timeout 600 "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          fi
+          test -s "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+      - name: Configure Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Verify 1717 local receipt audit, inherited 1716 Signal Centre and source status
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$DUWM_PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_1715_reference_palette.py
+          python3 verification/check_1716.py
+          python3 verification/check_1717.py
+          python3 verification/check_1717_fix1.py
+          mkdir -p "$RUNNER_TEMP/duwm1717-parser"
+          javac -d "$RUNNER_TEMP/duwm1717-parser" verification/JavaSyntaxCheck.java
+          java -cp "$RUNNER_TEMP/duwm1717-parser" JavaSyntaxCheck
+      - name: Compile installable DUWM 1717 Android debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$DUWM_PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p "$RUNNER_TEMP/duwm1717-release"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm1717-release/DUWM-1717.apk"
+      - name: Verify APK signature, identity and real compiled 1717 features
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY'
+          import os,hashlib,pathlib,subprocess,zipfile
+          apk=pathlib.Path(os.environ['RUNNER_TEMP'])/'duwm1717-release/DUWM-1717.apk'
+          assert apk.is_file() and apk.stat().st_size>150_000
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              dex=b''.join(z.read(n) for n in z.namelist() if n.startswith('classes') and n.endswith('.dex'))
+              assert dex, 'APK missing Android DEX content'
+              for name in (b'Duwm1717ReceiptAuditActivity', b'Duwm1716SignalCenterActivity',b'Duwm1715SignalLights',
+                           b'SatelliteMapView',b'SignalTickerRailView',b'Duwm1712OperationsMatrixActivity',
+                           b'openSignalCentre',b'EXTRA_SECTOR',b'DuwmUnifiedTheme',b'stableReceived',b'SAVED CAPTURES'):
+                  assert name in dex,('Missing compiled 1717 feature',name)
+          sdk=pathlib.Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(sdk/'apksigner'),'verify','--verbose',str(apk)],check=True)
+          info=subprocess.check_output([str(sdk/'aapt'),'dump','badging',str(apk)],text=True)
+          for item in ("versionCode='171700'","versionName='1717'",
+                       "name='com.sentongoharuna.worldsituationroom.rb2live25'",
+                       "application-label:'DUWM 1717 • DEVELOP.UGANDA'"):
+              assert item in info,(item,info[:1200])
+          (apk.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  '+apk.name+'\n')
+          print('PASS: compiled signed DUWM 1717, original globe preserved, 19 tap-to-open source signals, full-screen receipt centre and user-captured 1717 history')
+          PY_VERIFY
+      - name: Upload verified compiled Android APK, independent of emulator availability
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1717-FIX1-SIGNED-COMPILED-APK
+          path: ${{ runner.temp }}/duwm1717-release/
+          if-no-files-found: error
+          retention-days: 30
+  emulator-launch-optional:
+    if: github.event_name == 'workflow_dispatch'
+    needs: compile-debug-apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - name: Download compiled DUWM 1717 APK
+        uses: actions/download-artifact@v4
+        with:
+          name: DUWM-1717-FIX1-SIGNED-COMPILED-APK
+          path: apk
+      - name: Install and launch the existing original globe
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 600
+          script: |
+            set -euo pipefail
+            adb install -r apk/DUWM-1717.apk
+            adb logcat -c
+            adb shell am start -W -n com.sentongoharuna.worldsituationroom.rb2live25/com.sentongoharuna.worldsituationroom.MainActivity
+            sleep 12
+            adb shell pidof com.sentongoharuna.worldsituationroom.rb2live25
+            adb exec-out screencap -p > apk/DUWM-1717-ORIGINAL-GLOBE.png
+            test -s apk/DUWM-1717-ORIGINAL-GLOBE.png
+            adb logcat -d -s AndroidRuntime:E > apk/DUWM-1717-AndroidRuntime.txt || true
+            ! grep -q 'FATAL EXCEPTION' apk/DUWM-1717-AndroidRuntime.txt
+      - name: Publish genuine emulator screenshot if available
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1717-FIX1-EMULATOR-LAUNCH-PROOF
+          path: apk/DUWM-1717-ORIGINAL-GLOBE.png
+          if-no-files-found: error
+          retention-days: 30
