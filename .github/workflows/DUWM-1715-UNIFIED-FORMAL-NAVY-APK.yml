@@ -1,0 +1,295 @@
+name: "DUWM 1715 | Formal navy UI and independent signed APK"
+run-name: "DUWM 1715 | Rebuild original globe, repair formal UI, publish actual APK"
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/DUWM-1715-UNIFIED-FORMAL-NAVY-APK.yml'
+      - 'DUWM-1715-UNIFIED-FORMAL-NAVY-SOURCE.zip'
+permissions:
+  contents: read
+concurrency:
+  group: duwm-1715-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  compile-signed-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      PROJECT: ${{ runner.temp }}/duwm1715/DUWM-1715-ANDROID-SOURCE
+    steps:
+      - name: Checkout the original GitHub repository
+        uses: actions/checkout@v4
+      - name: Recover full 1715 source or apply verified patch over exact 1714 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/duwm1715"
+          if [ -s DUWM-1715-UNIFIED-FORMAL-NAVY-SOURCE.zip ]; then
+            echo '4540941d41a4e83339af2eb2604f9531ccb79a31b004f57ce2812ee94e398b15  DUWM-1715-UNIFIED-FORMAL-NAVY-SOURCE.zip' | sha256sum -c -
+            unzip -t DUWM-1715-UNIFIED-FORMAL-NAVY-SOURCE.zip | tail -1
+            unzip -q DUWM-1715-UNIFIED-FORMAL-NAVY-SOURCE.zip -d "$RUNNER_TEMP/duwm1715"
+          else
+            # The exact previous full Android project exists in the current repository.
+            echo '029a3bff1a1f02584407aca81ac7c0c41767a64827504b84454509f8b87833b5  DUWM-1714-SECTOR-WATCHLIST-SOURCE.zip' | sha256sum -c -
+            unzip -q DUWM-1714-SECTOR-WATCHLIST-SOURCE.zip -d "$RUNNER_TEMP/duwm1715"
+            cd "$RUNNER_TEMP/duwm1715/DUWM-1714-ANDROID-SOURCE"
+            base64 --decode > "$RUNNER_TEMP/duwm1715-formal.patch.xz" <<'DUWM_1715_VERIFIED_PATCH'
+          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
+          DUWM_1715_VERIFIED_PATCH
+            xz -dc "$RUNNER_TEMP/duwm1715-formal.patch.xz" > "$RUNNER_TEMP/duwm1715-formal.patch"
+            echo '16036a24843a926d237b3e94f66bd6e8f718114ccabab2bdf0dc7f75c5e1f672  '"$RUNNER_TEMP"'/duwm1715-formal.patch' | sha256sum -c -
+            patch --batch -p1 < "$RUNNER_TEMP/duwm1715-formal.patch"
+            cd "$RUNNER_TEMP/duwm1715"
+            mv DUWM-1714-ANDROID-SOURCE DUWM-1715-ANDROID-SOURCE
+          fi
+          test -s "$PROJECT/app/build.gradle.kts"
+          test -s "$PROJECT/app/src/main/java/com/sentongoharuna/worldsituationroom/SatelliteMapView.java"
+          test -s "$PROJECT/app/src/main/java/com/sentongoharuna/worldsituationroom/Duwm1715FormalUi.java"
+          echo 'Recovered verified 1715 full Android source; original globe remains the only main globe.'
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Validate actual 1715 changes, receipt invariants and all Java syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_1715.py
+          mkdir -p "$RUNNER_TEMP/duwm1715-parser"
+          javac -d "$RUNNER_TEMP/duwm1715-parser" verification/JavaSyntaxCheck.java
+          java -cp "$RUNNER_TEMP/duwm1715-parser" JavaSyntaxCheck
+      - name: Install Android 36 SDK if missing (no emulator/system image dependency)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDK_MANAGER" ]; then SDK_MANAGER="$(command -v sdkmanager)"; fi
+          if [ ! -s "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            timeout 600 "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          fi
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Compile original command-center Android APK, version 1715
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p "$RUNNER_TEMP/duwm1715-apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm1715-apk/DUWM-1715.apk"
+      - name: Verify the real signed APK and embedded 1715 classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY'
+          import hashlib, os, pathlib, subprocess, zipfile
+          apk=pathlib.Path(os.environ['RUNNER_TEMP'])/'duwm1715-apk/DUWM-1715.apk'
+          assert apk.is_file() and apk.stat().st_size>150000
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              dex=b''.join(z.read(x) for x in z.namelist() if x.startswith('classes') and x.endswith('.dex'))
+              for word in (b'SatelliteMapView',b'Duwm1715FormalUi',b'Duwm1712OperationsMatrixActivity',
+                           b'Duwm1711NativeDeskDock',b'Duwm1709SectorOutline',b'SignalTickerRailView',
+                           b'WATCHED',b'Duwm1713ReceiptCoverageView'):
+                  assert word in dex,('Expected compiled class/feature not found',word)
+          sdk=pathlib.Path(os.environ.get('ANDROID_HOME') or os.environ['ANDROID_SDK_ROOT'])/'build-tools/36.0.0'
+          subprocess.run([str(sdk/'apksigner'),'verify','--verbose',str(apk)],check=True)
+          badge=subprocess.check_output([str(sdk/'aapt'),'dump','badging',str(apk)],text=True)
+          for term in ("versionCode='171500'","versionName='1715'",
+                       "name='com.sentongoharuna.worldsituationroom.rb2live25'",
+                       "application-label:'DUWM 1715 • DEVELOP.UGANDA'"):
+              assert term in badge,(term,badge[:1200])
+          (apk.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  '+apk.name+'\n')
+          print('SIGNED REAL APK COMPILED: DUWM 1715, original globe, formal UI, source watchlist and live ticker classes')
+          PY_VERIFY
+      - name: Upload compiled, signed APK even when emulator image download fails
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1715-SIGNED-COMPILED-APK
+          path: ${{ runner.temp }}/duwm1715-apk/
+          if-no-files-found: error
+          retention-days: 30
+  emulator-smoke-optional:
+    needs: compile-signed-apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - name: Download compiled APK from required green build
+        uses: actions/download-artifact@v4
+        with:
+          name: DUWM-1715-SIGNED-COMPILED-APK
+          path: apk
+      - name: Install APK in Android 35 emulator (SDK image download may be unavailable)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          script: |
+            set -euo pipefail
+            adb install -r apk/DUWM-1715.apk
+            adb logcat -c
+            adb shell am start -W -n com.sentongoharuna.worldsituationroom.rb2live25/com.sentongoharuna.worldsituationroom.MainActivity
+            sleep 12
+            adb shell pidof com.sentongoharuna.worldsituationroom.rb2live25
+            adb exec-out screencap -p > apk/DUWM-1715-ORIGINAL-GLOBE.png
+            test -s apk/DUWM-1715-ORIGINAL-GLOBE.png
+            adb logcat -d -s AndroidRuntime:E > apk/DUWM-1715-AndroidRuntime.txt || true
+            ! grep -q 'FATAL EXCEPTION' apk/DUWM-1715-AndroidRuntime.txt
+      - name: Upload screenshot only if a genuine emulator session succeeded
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1715-EMULATOR-SCREENSHOT-VERIFIED
+          path: apk/DUWM-1715-ORIGINAL-GLOBE.png
+          if-no-files-found: error
+          retention-days: 30
