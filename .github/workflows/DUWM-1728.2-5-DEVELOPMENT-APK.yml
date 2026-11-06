@@ -1,0 +1,89 @@
+name: "DUWM 1728.2/5 — Development checkpoint compilation"
+run-name: "DUWM 1728.2/5 | Compile, inspect, do NOT treat as release"
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/DUWM-1728.2-5-DEVELOPMENT-APK.yml'
+      - 'DUWM-1728.2-5-DEVELOPMENT-SOURCE.zip'
+permissions:
+  contents: read
+jobs:
+  compile-development:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Verify exact source checkpoint and extract
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'd42698649ee01b3905cfb3eff832a6d492ac3a8ac7ed527174bd77fb85739d95  DUWM-1728.2-5-DEVELOPMENT-SOURCE.zip' | sha256sum -c -
+          unzip -t DUWM-1728.2-5-DEVELOPMENT-SOURCE.zip | tail -n 1
+          mkdir -p "$RUNNER_TEMP/duwm1728-p2-5"
+          unzip -q DUWM-1728.2-5-DEVELOPMENT-SOURCE.zip -d "$RUNNER_TEMP/duwm1728-p2-5"
+          PROJECT="$RUNNER_TEMP/duwm1728-p2-5/DUWM-1727-ANDROID-SOURCE"
+          test -f "$PROJECT/1728_PHASE2_5_CHECKPOINT_NOT_RELEASED.md"
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+      - name: Configure Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configure Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDK_MANAGER"
+          if [ ! -s "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            timeout 600 "$SDK_MANAGER" --sdk_root="$SDK_ROOT" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          fi
+          test -s "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+      - name: Configure Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Check existing source and Phase 2 checkpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          python3 verification/check_source.py
+          for check in verification/check_1728_phase2*.py; do
+            if [ -f "$check" ]; then python3 "$check"; fi
+          done
+          mkdir -p "$RUNNER_TEMP/duwm1728-java-parser"
+          javac -d "$RUNNER_TEMP/duwm1728-java-parser" verification/JavaSyntaxCheck.java
+          java -cp "$RUNNER_TEMP/duwm1728-java-parser" JavaSyntaxCheck
+      - name: Compile actual Android debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p "$RUNNER_TEMP/duwm1728-output"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm1728-output/DUWM-1728-PHASE2-5-DEV.apk"
+      - name: Verify signed debug APK and honestly report embedded identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          APK="$RUNNER_TEMP/duwm1728-output/DUWM-1728-PHASE2-5-DEV.apk"
+          "$SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$SDK_ROOT/build-tools/36.0.0/aapt" dump badging "$APK" | head -n 3
+          echo 'NOTE: source checkpoint still carries its original 1727 Android version identity; this is NOT a production 1728 release.'
+          sha256sum "$APK" > "$RUNNER_TEMP/duwm1728-output/SHA256SUMS.txt"
+      - name: Publish development APK for testing only
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1728-PHASE2-5-DEV-APK-NOT-RELEASED
+          path: ${{ runner.temp }}/duwm1728-output/
+          if-no-files-found: error
+          retention-days: 14
