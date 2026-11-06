@@ -1,0 +1,110 @@
+name: "DUWM 1721 | Worldwide USGS Receipts + MONITORS CAM Provenance"
+run-name: "DUWM 1721 | Compile original globe, global earthquakes and camera receipts"
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/DUWM-1721-GLOBAL-QUAKES-CAM-RECEIPTS-APK.yml'
+      - 'DUWM-1721-GLOBAL-QUAKES-CAM-RECEIPTS-SOURCE.zip'
+permissions:
+  contents: read
+concurrency:
+  group: duwm-1721-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  compile-and-verify:
+    name: Compile and sign real DUWM 1721 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - name: Checkout existing DUWM repository
+        uses: actions/checkout@v4
+      - name: Verify complete source SHA-256 and extract original Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '85d09bdb78bcd9b9ddb9977927789e771b31f6dc246274efb806e52a14780a29  DUWM-1721-GLOBAL-QUAKES-CAM-RECEIPTS-SOURCE.zip' | sha256sum -c -
+          unzip -t DUWM-1721-GLOBAL-QUAKES-CAM-RECEIPTS-SOURCE.zip | tail -n 1
+          mkdir -p "$RUNNER_TEMP/duwm1721"
+          unzip -q DUWM-1721-GLOBAL-QUAKES-CAM-RECEIPTS-SOURCE.zip -d "$RUNNER_TEMP/duwm1721"
+          test -s "$RUNNER_TEMP/duwm1721/DUWM-1721-ANDROID-SOURCE/verification/check_1721.py"
+          echo "DUWM_PROJECT=$RUNNER_TEMP/duwm1721/DUWM-1721-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Ensure Android SDK API 36 and signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -s "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            timeout 600 "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          fi
+          test -s "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Check original globe, reference colours, Java fix and 1721 source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$DUWM_PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_1717_fix1.py
+          python3 verification/check_1715_reference_palette.py
+          python3 verification/check_1721.py
+          mkdir -p "$RUNNER_TEMP/duwm1721-parser"
+          javac -d "$RUNNER_TEMP/duwm1721-parser" verification/JavaSyntaxCheck.java
+          java -cp "$RUNNER_TEMP/duwm1721-parser" JavaSyntaxCheck
+      - name: Compile Android 1721 debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$DUWM_PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p "$RUNNER_TEMP/duwm1721-release"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm1721-release/DUWM-1721.apk"
+      - name: Check APK signature and real compiled 1721 classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY'
+          import os,pathlib,zipfile,hashlib,subprocess
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'duwm1721-release/DUWM-1721.apk'
+          assert p.is_file() and p.stat().st_size>180000
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              dex=b''.join(z.read(n) for n in z.namelist() if n.startswith('classes') and n.endswith('.dex'))
+              assert dex
+              for term in (b'SatelliteMapView',b'Duwm1715SignalLights',b'Duwm1716SignalCenterActivity',
+                           b'Duwm1717ReceiptAuditActivity',b'Duwm1718GlobalDiscoverActivity',
+                           b'Duwm1718MonitorsCamActivity',b'Duwm1719MyWorldActivity',
+                           b'Duwm1721GlobalQuakesActivity',b'saveCaptureReceipt',b'showCaptureReceipt',
+                           b'earthquake.usgs.gov',b'SHA-256',b'getFromLocationName'):
+                  assert term in dex,('Missing compiled class/feature',term)
+          tools=pathlib.Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(tools/'apksigner'),'verify','--verbose',str(p)],check=True)
+          badge=subprocess.check_output([str(tools/'aapt'),'dump','badging',str(p)],text=True)
+          for value in ("versionCode='172100'","versionName='1721'",
+                        "name='com.sentongoharuna.worldsituationroom.rb2live25'",
+                        "application-label:'DUWM 1721 • DEVELOP.UGANDA'"):
+              assert value in badge,(value,badge[:1300])
+          (p.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n')
+          print('PASS genuine 1721 debug APK signature, version, original globe, 19 desks and world-camera features')
+          PY_VERIFY
+      - name: Publish signed APK and checksum (no emulator dependency)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1721-SIGNED-INSTALLABLE-APK
+          path: ${{ runner.temp }}/duwm1721-release/
+          if-no-files-found: error
+          retention-days: 30
