@@ -1,0 +1,199 @@
+name: "DUWM 1728.2/6 | Dark navy and independently blinking source signals"
+run-name: "DUWM 1728.2/6 | Compile colour fix; optional native Android visual checks"
+on:
+  workflow_dispatch:
+    inputs:
+      verify_android_pixels:
+        description: "Run native Android pixel tests and capture the original globe"
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/DUWM-1728.2-6-DARK-NAVY-LIVE-SIGNALS-APK.yml'
+      - 'DUWM-1728.2-6-DARK-NAVY-LIVE-SIGNALS-SOURCE.zip'
+permissions:
+  contents: read
+concurrency:
+  group: duwm-1728-2-6-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  compile-signed-debug-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout the existing original app repository
+        uses: actions/checkout@v4
+      - name: Verify and extract the complete corrected source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE=DUWM-1728.2-6-DARK-NAVY-LIVE-SIGNALS-SOURCE.zip
+          test -s "$SOURCE" || { echo "Upload $SOURCE to the repository root before this workflow." >&2; exit 1; }
+          echo '9b253c03a0f9b1753cf82ea64e3c66d51995892a98b05cc675f33e99c82b0350  DUWM-1728.2-6-DARK-NAVY-LIVE-SIGNALS-SOURCE.zip' | sha256sum --check
+          unzip -t "$SOURCE" | tail -n 1
+          mkdir -p "$RUNNER_TEMP/duwm172826"
+          unzip -q "$SOURCE" -d "$RUNNER_TEMP/duwm172826"
+          PROJECT="$RUNNER_TEMP/duwm172826/DUWM-1728-2-6-ANDROID-SOURCE"
+          test -s "$PROJECT/verification/check_1728_dark_signals.py"
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+      - name: Verify every packaged file against its hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_HASH'
+          import os,json,hashlib,pathlib
+          root=pathlib.Path(os.environ['PROJECT'])
+          records=json.loads((root/'1728_2_6_SOURCE_SHA256.json').read_text())
+          for name,expected in records.items():
+              file=(root/name).resolve()
+              assert file.is_relative_to(root.resolve()) and file.is_file(),name
+              assert hashlib.sha256(file.read_bytes()).hexdigest()==expected,name
+          print('PASS source hashes:',len(records))
+          PY_HASH
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android API 36 and signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          MANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$MANAGER"
+          if [ ! -s "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            timeout 600 "$MANAGER" --sdk_root="$SDK_ROOT" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          fi
+          test -s "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+      - name: Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Run actual policy tests and prior camera-editor regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_1728_dark_signals.py
+          for check in verification/check_1728_phase2*.py; do python3 "$check"; done
+          mkdir -p "$RUNNER_TEMP/duwm-parser"
+          javac -d "$RUNNER_TEMP/duwm-parser" verification/JavaSyntaxCheck.java
+          java -cp "$RUNNER_TEMP/duwm-parser" JavaSyntaxCheck
+          java -cp "$RUNNER_TEMP/duwm-parser" JavaSyntaxCheck app/src/androidTest/java
+      - name: Compile the real Android app and separate visual-test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+          mkdir -p "$RUNNER_TEMP/duwm-apk" "$RUNNER_TEMP/duwm-test"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm-apk/DUWM-1728.2-6-DARK-NAVY-LIVE-SIGNALS.apk"
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk "$RUNNER_TEMP/duwm-test/DUWM-signal-tests.apk"
+          cp 1728_2_6_DARK_SIGNALS_NOTES.md "$RUNNER_TEMP/duwm-apk/BUILD-NOTES.md"
+      - name: Verify signing, actual version and compiled integrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_APK'
+          import os,pathlib,zipfile,hashlib,subprocess
+          folder=pathlib.Path(os.environ['RUNNER_TEMP'])/'duwm-apk'
+          apk=folder/'DUWM-1728.2-6-DARK-NAVY-LIVE-SIGNALS.apk'
+          assert apk.stat().st_size>150000
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              dex=b''.join(z.read(n) for n in z.namelist() if n.startswith('classes') and n.endswith('.dex'))
+              for token in (b'Duwm1728StatusLampView',b'Duwm1728SignalMotion',b'SatelliteMapView',b'Duwm1718MonitorsCamActivity',b'Duwm1728VideoEditorActivity',b'Duwm1728RecordedAudioTranscriber'):
+                  assert token in dex,('Missing compiled integration',token)
+          tools=pathlib.Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(tools/'apksigner'),'verify','--verbose',str(apk)],check=True)
+          badging=subprocess.check_output([str(tools/'aapt'),'dump','badging',str(apk)],text=True)
+          for token in ("versionCode='172806'","versionName='1728.2.6'","name='com.sentongoharuna.worldsituationroom.rb2live25'","application-label:'DUWM 1728.2/6 • DEVELOP.UGANDA'"):
+              assert token in badging,token
+          (folder/'APK-IDENTITY.txt').write_text(badging)
+          (folder/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  '+apk.name+'\n')
+          print('PASS compiled and signed development APK; device appearance not implied.')
+          PY_APK
+      - name: Publish compiled development APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1728.2-6-COMPILED-DEBUG-APK
+          path: ${{ runner.temp }}/duwm-apk/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish separate native visual-test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1728.2-6-ANDROID-VISUAL-TESTS
+          path: ${{ runner.temp }}/duwm-test/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Retain build diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1728.2-6-BUILD-DIAGNOSTICS
+          path: ${{ env.PROJECT }}/app/build/reports/
+          if-no-files-found: ignore
+  android-pixel-and-launch-test:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.verify_android_pixels }}
+    needs: compile-signed-debug-apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: DUWM-1728.2-6-COMPILED-DEBUG-APK
+          path: apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: DUWM-1728.2-6-ANDROID-VISUAL-TESTS
+          path: tests
+      - name: Enable emulator acceleration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm
+          sudo chmod 666 /dev/kvm
+      - name: Actual Android pixel tests and original-globe launch
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: false
+          emulator-boot-timeout: 600
+          script: |
+            set -euo pipefail
+            mkdir -p visual-proof
+            PKG=com.sentongoharuna.worldsituationroom.rb2live25
+            adb install -r apk/DUWM-1728.2-6-DARK-NAVY-LIVE-SIGNALS.apk
+            adb install -r -t tests/DUWM-signal-tests.apk
+            adb logcat -c
+            adb shell am instrument -w "$PKG.test/com.sentongoharuna.worldsituationroom.DuwmSignalInstrumentation" | tee visual-proof/NATIVE-PIXEL-TEST.txt
+            grep -q 'DUWM_SIGNAL_VISUAL_PASS' visual-proof/NATIVE-PIXEL-TEST.txt
+            adb exec-out run-as "$PKG" tar -cf - files/signal-visual-proof > visual-proof/NATIVE-CANVAS-PIXELS.tar
+            adb shell am start -W -n "$PKG/com.sentongoharuna.worldsituationroom.MainActivity"
+            sleep 12
+            adb shell pidof "$PKG"
+            adb exec-out screencap -p > visual-proof/ORIGINAL-GLOBE.png
+            adb shell screenrecord --time-limit 8 /sdcard/duwm-signal-proof.mp4
+            adb pull /sdcard/duwm-signal-proof.mp4 visual-proof/ORIGINAL-GLOBE-8s.mp4
+            adb logcat -d -s AndroidRuntime:E > visual-proof/ANDROID-RUNTIME.txt
+            ! grep -q 'FATAL EXCEPTION' visual-proof/ANDROID-RUNTIME.txt
+      - name: Upload genuine Android results (including failures)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1728.2-6-ANDROID-VISUAL-RESULTS
+          path: visual-proof/
+          if-no-files-found: warn
+          retention-days: 30
