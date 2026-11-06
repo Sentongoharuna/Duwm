@@ -1,0 +1,116 @@
+name: "DUWM 1726 | Recorded Source Trends & Camera Gallery Browser"
+run-name: "DUWM 1726 | Compile original globe + real receipt history and Gallery recordings"
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/DUWM-1726-SOURCE-TRENDS-CAM-GALLERY-APK.yml'
+      - 'DUWM-1726-SOURCE-TRENDS-CAM-GALLERY-SOURCE.zip'
+permissions:
+  contents: read
+concurrency:
+  group: duwm-1726-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build-1726:
+    name: Compile and verify genuine DUWM 1726 APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - name: Checkout DUWM repository
+        uses: actions/checkout@v4
+      - name: Verify exact complete source SHA-256 and extract
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '040b9df3f31c86e2f5ff2c8b51f5b5c363597764837b18e642f1e5d21dbb778f  DUWM-1726-SOURCE-TRENDS-CAM-GALLERY-SOURCE.zip' | sha256sum -c -
+          unzip -t DUWM-1726-SOURCE-TRENDS-CAM-GALLERY-SOURCE.zip | tail -n 1
+          mkdir -p "$RUNNER_TEMP/duwm1726"
+          unzip -q DUWM-1726-SOURCE-TRENDS-CAM-GALLERY-SOURCE.zip -d "$RUNNER_TEMP/duwm1726"
+          test -s "$RUNNER_TEMP/duwm1726/DUWM-1726-ANDROID-SOURCE/verification/check_1726.py"
+          echo "DUWM_PROJECT=$RUNNER_TEMP/duwm1726/DUWM-1726-ANDROID-SOURCE" >> "$GITHUB_ENV"
+      - name: Configure JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Ensure Android SDK and signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -s "$SDK_ROOT/platforms/android-36/android.jar" ] || [ ! -x "$SDK_ROOT/build-tools/36.0.0/apksigner" ]; then
+            timeout 600 "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          fi
+          test -s "$SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$SDK_ROOT/build-tools/36.0.0/apksigner"
+          test -x "$SDK_ROOT/build-tools/36.0.0/aapt"
+      - name: Configure Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Verify protected original globe, camera Gallery browser and genuine source-history timeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$DUWM_PROJECT"
+          python3 verification/check_source.py
+          python3 verification/check_1717_fix1.py
+          python3 verification/check_1715_reference_palette.py
+          python3 verification/check_1726.py
+          mkdir -p "$RUNNER_TEMP/duwm1726-parser"
+          javac -d "$RUNNER_TEMP/duwm1726-parser" verification/JavaSyntaxCheck.java
+          java -cp "$RUNNER_TEMP/duwm1726-parser" JavaSyntaxCheck
+      - name: Compile real Android DUWM 1726 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$DUWM_PROJECT"
+          gradle --no-daemon --no-configuration-cache :app:assembleDebug --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p "$RUNNER_TEMP/duwm1726-apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/duwm1726-apk/DUWM-1726.apk"
+      - name: Verify signature, version, exact formats and actual compiled classes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY_VERIFY'
+          import hashlib,os,pathlib,subprocess,zipfile
+          apk=pathlib.Path(os.environ['RUNNER_TEMP'])/'duwm1726-apk/DUWM-1726.apk'
+          assert apk.is_file() and apk.stat().st_size>180_000
+          with zipfile.ZipFile(apk) as zipf:
+              assert zipf.testzip() is None
+              dex=b''.join(zipf.read(n) for n in zipf.namelist() if n.startswith('classes') and n.endswith('.dex'))
+              assert dex,'Android dex missing'
+              for marker in (
+                  b'SatelliteMapView',b'Duwm1715SignalLights',b'Duwm1716SignalCenterActivity',
+                  b'Duwm1717ReceiptAuditActivity',b'Duwm1718MonitorsCamActivity',
+                  b'Duwm1718GlobalDiscoverActivity',b'Duwm1719MyWorldActivity',
+                  b'Duwm1723GlobalWeatherActivity',b'Duwm1724GalleryPublisher',
+                  b'Duwm1724SignalFlow',b'Duwm1724SignalHistory',
+                  b'Duwm1726GalleryLibraryActivity',b'Duwm1726GalleryIndex',b'OBSERVED STATUS CHANGES',b'MY RECORDINGS',
+                  b'DuwmUnifiedTheme',b'Duwm1166SignalView',b'Duwm1674SignalBoardView',
+                  b'SIGNAL',b'9:10 PORTRAIT',b'16:9 LANDSCAPE',b'Movies',
+                  b'MediaMetadataRetriever',b'DUWM Monitors Cam',b'GALLERY',
+                  b'RECEIVING',b'STALE / CACHED'):
+                  assert marker in dex,('Missing compiled 1726 feature',marker)
+          sdk=pathlib.Path(os.environ['ANDROID_HOME'])/'build-tools/36.0.0'
+          subprocess.run([str(sdk/'apksigner'),'verify','--verbose',str(apk)],check=True)
+          badge=subprocess.check_output([str(sdk/'aapt'),'dump','badging',str(apk)],text=True)
+          for expected in ("versionCode='172600'","versionName='1726'",
+                           "name='com.sentongoharuna.worldsituationroom.rb2live25'",
+                           "application-label:'DUWM 1726 • DEVELOP.UGANDA'"):
+              assert expected in badge,(expected,badge[:1100])
+          (apk.parent/'SHA256SUMS.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'  '+apk.name+'\n')
+          print('PASS: signed DUWM 1726 APK includes original globe, recorded signal timeline, 9:10/16:9 MONITORS CAM and accessible saved Gallery recordings')
+          PY_VERIFY
+      - name: Publish signed DUWM 1726 APK and checksum even if emulator is unavailable
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1726-SIGNED-INSTALLABLE-APK
+          path: ${{ runner.temp }}/duwm1726-apk/
+          if-no-files-found: error
+          retention-days: 30
