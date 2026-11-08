@@ -1,0 +1,100 @@
+name: "DUWM 1728.2/21/4/14 | APK RUN FIX"
+run-name: "DUWM 1728.2/21/4/14 | Build installable APK"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "DUWM-1728.2-21-4-14-FIXED-TELEMETRY-FULL-SOURCE.zip"
+      - ".github/workflows/APK-RUN-FIXED-TELEMETRY-14-4-21-1728.2-DUWM.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify source ZIP exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s DUWM-1728.2-21-4-14-FIXED-TELEMETRY-FULL-SOURCE.zip
+
+      - name: Extract source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf DUWM-1728-2-21-4-14-ANDROID-SOURCE
+          unzip -q DUWM-1728.2-21-4-14-FIXED-TELEMETRY-FULL-SOURCE.zip
+          test -f DUWM-1728-2-21-4-14-ANDROID-SOURCE/settings.gradle.kts
+          test -f DUWM-1728-2-21-4-14-ANDROID-SOURCE/app/build.gradle.kts
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+
+      - name: Ensure Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$MANAGER"
+          yes | "$MANAGER" --licenses >/dev/null || true
+          "$MANAGER" --sdk_root="$SDK" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+      - name: Verify ML Kit dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd DUWM-1728-2-21-4-14-ANDROID-SOURCE
+          gradle --no-daemon --no-configuration-cache --console=plain :app:duwmVerifySceneDependency --stacktrace
+
+      - name: Compile Java
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd DUWM-1728-2-21-4-14-ANDROID-SOURCE
+          gradle --no-daemon --no-configuration-cache --console=plain :app:compileDebugJavaWithJavac --stacktrace
+
+      - name: Assemble APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd DUWM-1728-2-21-4-14-ANDROID-SOURCE
+          gradle --no-daemon --no-configuration-cache --console=plain :app:assembleDebug --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p apk-output
+          cp DUWM-1728-2-21-4-14-ANDROID-SOURCE/app/build/outputs/apk/debug/app-debug.apk apk-output/DUWM-1728.2-21-4-14-INSTALLABLE.apk
+          sha256sum apk-output/DUWM-1728.2-21-4-14-INSTALLABLE.apk > apk-output/SHA256SUMS.txt
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1728.2-21-4-14-INSTALLABLE-APK
+          path: apk-output/
+          if-no-files-found: error
+          retention-days: 30
