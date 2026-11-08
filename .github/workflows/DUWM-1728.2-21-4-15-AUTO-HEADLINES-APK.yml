@@ -1,0 +1,241 @@
+name: "DUWM 1728.2/21/4/15 | Auto headline rewrite | APK"
+run-name: "DUWM 1728.2/21/4/15 | Build APK + 1-2 line automatic headlines"
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "DUWM-1728.2-21-4-14-FIXED-TELEMETRY-FULL-SOURCE.zip"
+      - ".github/workflows/DUWM-1728.2-21-4-15-AUTO-HEADLINES-APK.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: duwm-1728-2-21-4-15-auto-headlines
+  cancel-in-progress: false
+
+env:
+  BASE_ZIP: DUWM-1728.2-21-4-14-FIXED-TELEMETRY-FULL-SOURCE.zip
+  PROJECT_DIR: DUWM-1728-2-21-4-14-ANDROID-SOURCE
+  APK_NAME: DUWM-1728.2-21-4-15-AUTO-HEADLINES.apk
+  ARTIFACT_NAME: DUWM-1728.2-21-4-15-INSTALLABLE-APK
+
+jobs:
+  build-apk:
+    name: Build installable APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract exact inherited source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$BASE_ZIP"
+          rm -rf "$PROJECT_DIR"
+          unzip -q "$BASE_ZIP"
+          test -f "$PROJECT_DIR/settings.gradle.kts"
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
+
+      - name: Apply 21.4.15 version and automatic headline policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path("DUWM-1728-2-21-4-14-ANDROID-SOURCE")
+          gradle = root / "app/build.gradle.kts"
+          g = gradle.read_text()
+          g = re.sub(r'versionCode\s*=\s*\d+', 'versionCode = 172839', g, count=1)
+          g = re.sub(r'versionName\s*=\s*"[^"]+"', 'versionName = "1728.2.21.4.15"', g, count=1)
+          gradle.write_text(g)
+
+          pkg = root / "app/src/main/java/com/sentongoharuna/worldsituationroom"
+          helper = pkg / "DuwmHeadlinePolicy.java"
+          helper.write_text(r'''package com.sentongoharuna.worldsituationroom;
+
+/**
+ * DUWM 1728.2/21/4/15 headline policy:
+ * - normal professional font size remains the priority
+ * - one line when short
+ * - two lines maximum when longer
+ * - long source headlines are automatically shortened before fitting
+ */
+public final class DuwmHeadlinePolicy {
+    private static final int MAX_TOTAL = 68;
+    private static final int TARGET_LINE = 34;
+
+    private DuwmHeadlinePolicy() {}
+
+    public static String rewrite(String input) {
+        if (input == null) return "";
+        String s = input.replaceAll("\\s+", " ").trim();
+
+        if (s.length() > MAX_TOTAL) {
+            s = s.replaceAll("(?i)\\baccording to reports?\\b", "")
+                 .replaceAll("(?i)\\bin a statement\\b", "")
+                 .replaceAll("(?i)\\bofficials? (say|said)\\b", "")
+                 .replaceAll("(?i)\\bit has been reported that\\b", "")
+                 .replaceAll("(?i)\\bnew details? show(?:s)? that\\b", "")
+                 .replaceAll("\\s+", " ").trim();
+        }
+
+        if (s.length() > MAX_TOTAL) {
+            String[] words = s.split(" ");
+            StringBuilder out = new StringBuilder();
+            for (String word : words) {
+                int extra = word.length() + (out.length() == 0 ? 0 : 1);
+                if (out.length() + extra > MAX_TOTAL - 1) break;
+                if (out.length() > 0) out.append(' ');
+                out.append(word);
+            }
+            s = out.toString().replaceAll("[,;:]$", "") + "…";
+        }
+
+        return twoLines(s);
+    }
+
+    private static String twoLines(String s) {
+        if (s.length() <= TARGET_LINE) return s;
+
+        int split = s.lastIndexOf(' ', Math.min(TARGET_LINE, s.length() - 1));
+        if (split < 12) {
+            int right = s.indexOf(' ', Math.min(TARGET_LINE, s.length() - 1));
+            split = right > 0 ? right : Math.min(TARGET_LINE, s.length());
+        }
+
+        String first = s.substring(0, split).trim();
+        String second = s.substring(split).trim();
+
+        if (second.length() > TARGET_LINE + 6) {
+            second = second.substring(0, Math.min(second.length(), TARGET_LINE + 5)).trim();
+            int last = second.lastIndexOf(' ');
+            if (last > 12) second = second.substring(0, last);
+            second = second.replaceAll("[,;:]$", "") + "…";
+        }
+
+        return first + "\n" + second;
+    }
+}
+''')
+
+          patched = 0
+          for p in pkg.rglob("*.java"):
+              if p.name == "DuwmHeadlinePolicy.java":
+                  continue
+              t = p.read_text()
+              old = t
+
+              t = re.sub(
+                  r'sceneFit\(painter,\s*([A-Za-z0-9_\.()]*headline[A-Za-z0-9_\.()]*)\s*,',
+                  r'sceneFit(painter,DuwmHeadlinePolicy.rewrite(\1),',
+                  t,
+                  flags=re.I
+              )
+              t = re.sub(
+                  r'painter\.text\(\s*([A-Za-z0-9_\.()]*headline[A-Za-z0-9_\.()]*)\s*,',
+                  r'painter.text(DuwmHeadlinePolicy.rewrite(\1),',
+                  t,
+                  flags=re.I
+              )
+
+              if t != old:
+                  p.write_text(t)
+                  patched += 1
+                  print("PATCHED:", p)
+
+          if patched == 0:
+              raise SystemExit(
+                  "No headline renderer anchor found. "
+                  "Refusing to publish an APK without verified headline behavior."
+              )
+
+          print("PASS: headline policy installed in", patched, "renderer file(s)")
+          PY
+
+          grep -q 'versionCode = 172839' "$PROJECT_DIR/app/build.gradle.kts"
+          grep -q 'versionName = "1728.2.21.4.15"' "$PROJECT_DIR/app/build.gradle.kts"
+          grep -R -q 'DuwmHeadlinePolicy.rewrite' \
+            "$PROJECT_DIR/app/src/main/java/com/sentongoharuna/worldsituationroom"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+
+      - name: Ensure Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$MANAGER"
+          yes | "$MANAGER" --licenses >/dev/null || true
+          "$MANAGER" --sdk_root="$SDK" --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+      # Removed inherited failure:
+      # :app:duwmVerifySceneDependency does not exist in the 21.4.14 source.
+
+      - name: Compile Android Java
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle --no-daemon --no-configuration-cache --console=plain :app:compileDebugJavaWithJavac --stacktrace
+
+      - name: Assemble installable APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --no-configuration-cache --console=plain :app:assembleDebug --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify APK identity and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          AAPT="$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt"
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+
+          "$AAPT" dump badging "$APK" | tee APK-IDENTITY.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee APK-SIGNER.txt
+
+          grep -q "versionCode='172839'" APK-IDENTITY.txt
+          grep -q "versionName='1728.2.21.4.15'" APK-IDENTITY.txt
+          grep -q "name='com.sentongoharuna.worldsituationroom.rb2live25'" APK-IDENTITY.txt
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p apk-output
+          cp "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk" \
+             "apk-output/$APK_NAME"
+          cp APK-IDENTITY.txt APK-SIGNER.txt apk-output/
+          sha256sum "apk-output/$APK_NAME" > apk-output/SHA256SUMS.txt
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: apk-output/
+          if-no-files-found: error
+          retention-days: 30
