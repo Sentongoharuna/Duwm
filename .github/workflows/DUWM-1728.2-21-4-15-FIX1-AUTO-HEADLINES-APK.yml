@@ -1,0 +1,361 @@
+name: "DUWM 1728.2/21/4/15 FIX1 | Auto headlines | APK"
+run-name: "DUWM 1728.2/21/4/15 FIX1 | Build installable APK"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "DUWM-1728.2-21-4-14-FIXED-TELEMETRY-FULL-SOURCE.zip"
+      - ".github/workflows/DUWM-1728.2-21-4-15-FIX1-AUTO-HEADLINES-APK.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: duwm-1728-2-21-4-15-fix1
+  cancel-in-progress: false
+
+env:
+  BASE_ZIP: DUWM-1728.2-21-4-14-FIXED-TELEMETRY-FULL-SOURCE.zip
+  PROJECT_DIR: DUWM-1728-2-21-4-14-ANDROID-SOURCE
+  APK_NAME: DUWM-1728.2-21-4-15-FIX1-AUTO-HEADLINES.apk
+  ARTIFACT_NAME: DUWM-1728.2-21-4-15-FIX1-INSTALLABLE-APK
+
+jobs:
+  build-apk:
+    name: Build installable APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify and extract inherited source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$BASE_ZIP"
+          rm -rf "$PROJECT_DIR"
+          unzip -q "$BASE_ZIP"
+          test -f "$PROJECT_DIR/settings.gradle.kts"
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
+
+      - name: Apply 21.4.15 identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path("DUWM-1728-2-21-4-14-ANDROID-SOURCE/app/build.gradle.kts")
+          s = p.read_text()
+
+          s, n1 = re.subn(
+              r'versionCode\s*=\s*\d+',
+              'versionCode = 172839',
+              s,
+              count=1
+          )
+
+          s, n2 = re.subn(
+              r'versionName\s*=\s*"[^"]+"',
+              'versionName = "1728.2.21.4.15"',
+              s,
+              count=1
+          )
+
+          if n1 != 1 or n2 != 1:
+              raise SystemExit("Version anchors not found")
+
+          p.write_text(s)
+          print("PASS version 1728.2.21.4.15 applied")
+          PY
+
+      - name: Install automatic one-to-two-line headline policy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path("DUWM-1728-2-21-4-14-ANDROID-SOURCE")
+          pkg = root / "app/src/main/java/com/sentongoharuna/worldsituationroom"
+
+          if not pkg.is_dir():
+              raise SystemExit("DUWM Java package directory not found")
+
+          helper = pkg / "DuwmHeadlinePolicy.java"
+
+          helper.write_text("""package com.sentongoharuna.worldsituationroom;
+
+          /**
+           * DUWM 1728.2/21/4/15
+           *
+           * Automatic broadcast headline policy.
+           *
+           * Rules:
+           * 1. Keep headlines to one or two lines maximum.
+           * 2. Rewrite/shorten long headlines before reducing font size.
+           * 3. Preserve professional readable typography.
+           * 4. Remove unnecessary filler wording first.
+           */
+          public final class DuwmHeadlinePolicy {
+
+              private static final int MAX_TOTAL = 68;
+              private static final int TARGET_LINE = 34;
+
+              private DuwmHeadlinePolicy() {}
+
+              public static String rewrite(String input) {
+
+                  if (input == null) {
+                      return "";
+                  }
+
+                  String s = input
+                          .replaceAll("\\\\s+", " ")
+                          .trim();
+
+                  if (s.isEmpty()) {
+                      return "";
+                  }
+
+                  /*
+                   * First shorten common news filler.
+                   * Meaning is preserved while unnecessary words disappear.
+                   */
+                  if (s.length() > MAX_TOTAL) {
+
+                      s = s
+                              .replaceAll(
+                                      "(?i)\\\\baccording to reports?\\\\b",
+                                      ""
+                              )
+                              .replaceAll(
+                                      "(?i)\\\\bin a statement\\\\b",
+                                      ""
+                              )
+                              .replaceAll(
+                                      "(?i)\\\\bofficials? (say|said)\\\\b",
+                                      ""
+                              )
+                              .replaceAll(
+                                      "(?i)\\\\bit has been reported that\\\\b",
+                                      ""
+                              )
+                              .replaceAll(
+                                      "(?i)\\\\bnew details? show(?:s)? that\\\\b",
+                                      ""
+                              )
+                              .replaceAll(
+                                      "(?i)\\\\breports indicate that\\\\b",
+                                      ""
+                              )
+                              .replaceAll(
+                                      "(?i)\\\\bsources say that\\\\b",
+                                      ""
+                              )
+                              .replaceAll(
+                                      "\\\\s+",
+                                      " "
+                              )
+                              .trim();
+                  }
+
+                  /*
+                   * If still too long, shorten at complete-word boundaries.
+                   * Do this before allowing the UI to make text tiny.
+                   */
+                  if (s.length() > MAX_TOTAL) {
+
+                      String[] words = s.split(" ");
+                      StringBuilder out = new StringBuilder();
+
+                      for (String word : words) {
+
+                          int extra =
+                                  word.length()
+                                  + (out.length() == 0 ? 0 : 1);
+
+                          if (out.length() + extra > MAX_TOTAL - 1) {
+                              break;
+                          }
+
+                          if (out.length() > 0) {
+                              out.append(' ');
+                          }
+
+                          out.append(word);
+                      }
+
+                      s = out.toString()
+                              .replaceAll("[,;:]$", "");
+
+                      if (!s.endsWith("…")) {
+                          s += "…";
+                      }
+                  }
+
+                  return twoLines(s);
+              }
+
+              private static String twoLines(String s) {
+
+                  if (s.length() <= TARGET_LINE) {
+                      return s;
+                  }
+
+                  int target =
+                          Math.min(
+                                  TARGET_LINE,
+                                  s.length() - 1
+                          );
+
+                  int split =
+                          s.lastIndexOf(
+                                  ' ',
+                                  target
+                          );
+
+                  if (split < 12) {
+
+                      int right =
+                              s.indexOf(
+                                      ' ',
+                                      target
+                              );
+
+                      split =
+                              right > 0
+                                      ? right
+                                      : target;
+                  }
+
+                  String first =
+                          s.substring(
+                                  0,
+                                  split
+                          ).trim();
+
+                  String second =
+                          s.substring(
+                                  split
+                          ).trim();
+
+                  /*
+                   * Absolute second-line protection.
+                   * This guarantees no three-line headline is produced.
+                   */
+                  if (second.length() > TARGET_LINE + 6) {
+
+                      second =
+                              second.substring(
+                                      0,
+                                      Math.min(
+                                              second.length(),
+                                              TARGET_LINE + 5
+                                      )
+                              ).trim();
+
+                      int last =
+                              second.lastIndexOf(' ');
+
+                      if (last > 12) {
+                          second =
+                                  second.substring(
+                                          0,
+                                          last
+                                  );
+                      }
+
+                      second =
+                              second.replaceAll(
+                                      "[,;:]$",
+                                      ""
+                              );
+
+                      if (!second.endsWith("…")) {
+                          second += "…";
+                      }
+                  }
+
+                  return first + "\\n" + second;
+              }
+          }
+          """)
+
+          patched = 0
+
+          for p in pkg.rglob("*.java"):
+
+              if p.name == "DuwmHeadlinePolicy.java":
+                  continue
+
+              text = p.read_text()
+              original = text
+
+              /*
+               * Patch headline values passed through sceneFit().
+               * Only identifiers containing "headline" are touched.
+               */
+              text = re.sub(
+                  r'sceneFit\\(painter,\\s*'
+                  r'([A-Za-z0-9_\\.()]*headline[A-Za-z0-9_\\.]*)'
+                  r'\\s*,',
+                  r'sceneFit(painter,DuwmHeadlinePolicy.rewrite(\\1),',
+                  text,
+                  flags=re.I
+              )
+
+              /*
+               * Patch direct painter.text(headline...) rendering.
+               */
+              text = re.sub(
+                  r'painter\\.text\\(\\s*'
+                  r'([A-Za-z0-9_\\.()]*headline[A-Za-z0-9_\\.]*)'
+                  r'\\s*,',
+                  r'painter.text(DuwmHeadlinePolicy.rewrite(\\1),',
+                  text,
+                  flags=re.I
+              )
+
+              if text != original:
+
+                  p.write_text(text)
+                  patched += 1
+
+                  print(
+                      "PATCHED headline renderer:",
+                      p
+                  )
+
+          if patched == 0:
+              raise SystemExit(
+                  "No verified headline renderer anchor found. "
+                  "Stopping build instead of producing an unchanged APK."
+              )
+
+          print(
+              "PASS headline policy installed in",
+              patched,
+              "renderer file(s)"
+          )
+          PY
+
+          grep -q \
+            'versionCode = 172839' \
+            "$PROJECT_DIR/app/build.gradle.kts"
+
+          grep -q \
+            'versionName = "1728.2.21.4.15"' \
+            "$PROJECT_DIR/app/build.gradle.kts"
+
+          grep -q \
+            'MAX_TOTAL = 68' \
+            "$PROJECT_DIR/app/src/main/java/com/sentongohar
