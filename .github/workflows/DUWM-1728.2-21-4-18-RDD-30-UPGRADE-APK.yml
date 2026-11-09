@@ -1,0 +1,105 @@
+name: DUWM 1728.2 21.4.18 RDD 30-UPGRADE CUMULATIVE APK
+run-name: DUWM 1728.2/21.4/18 RDD | 30-upgrade cumulative build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - "DUWM-1728.2-21-4-14-FIXED-TELEMETRY-FULL-SOURCE.zip"
+      - "apply_duwm_1728_2_21_4_18_rdd.py"
+      - ".github/workflows/DUWM-1728.2-21-4-18-RDD-30-UPGRADE-APK.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: duwm-1728-2-21-4-18-rdd
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: RDD gate 1 - extract verified baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "DUWM-1728.2-21-4-14-FIXED-TELEMETRY-FULL-SOURCE.zip"
+          rm -rf DUWM-1728-2-21-4-14-ANDROID-SOURCE
+          unzip -q "DUWM-1728.2-21-4-14-FIXED-TELEMETRY-FULL-SOURCE.zip"
+          test -f DUWM-1728-2-21-4-14-ANDROID-SOURCE/settings.gradle.kts
+          echo "PROJECT_DIR=DUWM-1728-2-21-4-14-ANDROID-SOURCE" >> "$GITHUB_ENV"
+
+      - name: RDD gate 2 - apply 20 plus visible upgrades
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 apply_duwm_1728_2_21_4_18_rdd.py "$PROJECT_DIR" | tee RDD-UPGRADE-REPORT.txt
+          COUNT="$(awk '/RDD_APPLIED/{print $2}' RDD-UPGRADE-REPORT.txt)"
+          test "$COUNT" -ge 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+      - name: RDD gate 3 - compile regression gate
+        shell: bash
+        run: |
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache --console=plain :app:compileDebugJavaWithJavac --stacktrace
+
+      - name: Assemble APK
+        shell: bash
+        run: |
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache --console=plain :app:assembleDebug --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Stage APK and full source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk" "$RUNNER_TEMP/release/DUWM-1728.2-21-4-18-RDD.apk"
+          cp RDD-UPGRADE-REPORT.txt "$RUNNER_TEMP/release/"
+          (
+            cd "$(dirname "$PROJECT_DIR")"
+            zip -qr "$RUNNER_TEMP/release/DUWM-1728.2-21-4-18-RDD-FULL-SOURCE.zip" "$(basename "$PROJECT_DIR")"
+          )
+          sha256sum "$RUNNER_TEMP/release/DUWM-1728.2-21-4-18-RDD.apk" > "$RUNNER_TEMP/release/SHA256SUMS.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1728.2-21-4-18-RDD-INSTALLABLE-APK
+          path: |
+            ${{ runner.temp }}/release/DUWM-1728.2-21-4-18-RDD.apk
+            ${{ runner.temp }}/release/RDD-UPGRADE-REPORT.txt
+            ${{ runner.temp }}/release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1728.2-21-4-18-RDD-FULL-SOURCE
+          path: ${{ runner.temp }}/release/DUWM-1728.2-21-4-18-RDD-FULL-SOURCE.zip
+          if-no-files-found: error
+          retention-days: 30
