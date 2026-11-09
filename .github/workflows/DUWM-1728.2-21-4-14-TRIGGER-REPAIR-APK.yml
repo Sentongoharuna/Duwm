@@ -1,0 +1,114 @@
+name: DUWM 1728.2 21.4.14 TRIGGER REPAIR APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: duwm-1728-2-21-4-14-trigger-repair
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract known source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_ZIP="DUWM-1728.2-21-4-13-PROFESSIONAL-TRANSITIONS-SOURCE.zip"
+          PROJECT_DIR="DUWM-1728-2-21-4-13-ANDROID-SOURCE"
+          test -s "$BASE_ZIP"
+          rm -rf "$PROJECT_DIR"
+          unzip -q "$BASE_ZIP"
+          test -f "$PROJECT_DIR/settings.gradle.kts"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Apply fixed telemetry 21.4.14
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          root = Path("DUWM-1728-2-21-4-13-ANDROID-SOURCE")
+          gradle = root / "app/build.gradle.kts"
+          s = gradle.read_text()
+          s = s.replace("versionCode = 172837", "versionCode = 172838")
+          s = s.replace('versionName = "1728.2.21.4.13"', 'versionName = "1728.2.21.4.14"')
+          gradle.write_text(s)
+          layout = root / "app/src/main/java/com/sentongoharuna/worldsituationroom/Duwm1728ClearPictureLayout.java"
+          t = layout.read_text()
+          old = "    private static void measurementLine(Painter painter,String value,float x,float y,float width,float unit,int color){\n        if(value.isEmpty())return;\n        // A reading changing digit count must not make the whole field pulse.\n        float size=18*unit;painter.text(sceneFit(painter,value,size,false,width,false),x,y,size,color,false);\n    }"
+          new = "    private static void measurementLine(Painter painter,String value,float x,float y,float width,float unit,int color){\n        String stable=value==null?\"\":value.trim();\n        if(stable.isEmpty())stable=\"—\";\n        // /21.4/14: geometry is fixed; only the value changes inside the reserved cell.\n        float size=18*unit;\n        painter.text(sceneFit(painter,stable,size,false,width,false),x,y,size,color,false);\n    }"
+          if old in t:
+              t = t.replace(old, new)
+          elif 'String stable=value==null?"":value.trim();' not in t:
+              raise SystemExit("fixed telemetry anchor not found")
+          layout.write_text(t)
+          print("PASS: 21.4.14 telemetry patch applied")
+          PYCODE
+          grep -q 'versionCode = 172838' "$PROJECT_DIR/app/build.gradle.kts"
+          grep -q 'versionName = "1728.2.21.4.14"' "$PROJECT_DIR/app/build.gradle.kts"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+          cache-disabled: true
+
+      - name: Compile Java
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache --console=plain :app:compileDebugJavaWithJavac --stacktrace
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          gradle --no-daemon --no-configuration-cache --console=plain :app:assembleDebug --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Stage installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release"
+          APK="$(find "$PROJECT_DIR/app/build/outputs/apk" -type f -name '*.apk' -print -quit)"
+          test -s "$APK"
+          cp "$APK" "$RUNNER_TEMP/release/DUWM-1728.2-21-4-14-FIXED-TELEMETRY.apk"
+          sha256sum "$RUNNER_TEMP/release/DUWM-1728.2-21-4-14-FIXED-TELEMETRY.apk" > "$RUNNER_TEMP/release/SHA256SUMS.txt"
+
+      - name: Upload installable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-1728.2-21-4-14-INSTALLABLE-APK
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 30
