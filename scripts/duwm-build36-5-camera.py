@@ -10,10 +10,10 @@ def change(a,b):
 # Persistent grid preference shared between quick toolbar and advanced camera settings.
 change('private View previewGrid; private boolean showGrid=false;',
        'private View previewGrid; private boolean showGrid=false;\n    private void toggleCompositionGrid(){showGrid=!showGrid;getSharedPreferences(VIDEO_SETTINGS,MODE_PRIVATE).edit().putBoolean("composition_grid_enabled",showGrid).apply();if(previewGrid!=null)previewGrid.invalidate();note(showGrid?"Composition grid enabled":"Composition grid hidden");}')
-change('showGrid=!showGrid;if(previewGrid!=null)previewGrid.invalidate();',
-       'toggleCompositionGrid();')
-# Replace only the quick toolbar handler if it survived the earlier substitution.
-s=s.replace('showGrid=!showGrid;if(previewGrid!=null)previewGrid.invalidate();note(showGrid?"Composition grid enabled":"Composition grid hidden");','toggleCompositionGrid();')
+change('quickGrid=action("GRID",()->{showGrid=!showGrid;if(previewGrid!=null)previewGrid.invalidate();note(showGrid?"Composition grid enabled":"Composition grid hidden");});',
+       'quickGrid=action("GRID",this::toggleCompositionGrid);')
+change('reportDetails.addView(action("PREVIEW GRID ON / OFF",()->{\n            showGrid=!showGrid;if(previewGrid!=null)previewGrid.invalidate();\n        }),mp());',
+       'reportDetails.addView(action("PREVIEW GRID ON / OFF",this::toggleCompositionGrid),mp());')
 # Make recording controls convey state to screen readers and prevent accidental double taps.
 change('recordButton.setMinHeight(dp(68));recordButton.setContentDescription("Start or stop video recording");',
        'recordButton.setMinHeight(dp(68));recordButton.setContentDescription("Start or stop video recording");recordButton.setFocusable(true);')
