@@ -12,7 +12,6 @@ def patch(a,b):
  s=s.replace(a,b)
 # Accessible, functional recording controls with no changes to recording engine.
 patch('recordButton.setMinHeight(dp(62));','recordButton.setMinHeight(dp(68));recordButton.setContentDescription("Start or stop video recording");')
-patch('quickGrid=action("GRID",','quickGrid=action("GRID",')
 patch('TextView quickTorch=action("LIGHT",this::toggleTorch);','TextView quickTorch=action("LIGHT",this::toggleTorch);quickTorch.setContentDescription("Toggle camera torch when available");')
 patch('TextView quickZoom=action("ZOOM +",this::zoomCamera);','TextView quickZoom=action("ZOOM +",this::zoomCamera);quickZoom.setContentDescription("Increase camera zoom when supported");')
 patch('TextView quickFocus=action("FOCUS",this::focusOnce);','TextView quickFocus=action("FOCUS",this::focusOnce);quickFocus.setContentDescription("Trigger camera autofocus");')
