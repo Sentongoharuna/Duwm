@@ -1,6 +1,16 @@
 name: DUWM Build 36.1 Camera Patch APK
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/DUWM-BUILD36-1-APK.yml'
+      - 'scripts/duwm-build36-camera-patches.py'
+      - 'DUWM-MASTER-BASE-35-ONE-TIME-UPLOAD.zip'
   workflow_dispatch:
+concurrency:
+  group: duwm-build-36-1-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
