@@ -6,7 +6,7 @@ on:
     paths:
       - '.github/workflows/DUWM-BUILD36-3-APK.yml'
       - 'scripts/duwm-build36-camera-patches.py'
-      - 'scripts/duwm-build36-3-camera.py'
+      - 'scripts/duwm-build36-2-camera.py'
       - 'DUWM-MASTER-BASE-35-ONE-TIME-UPLOAD.zip'
   workflow_dispatch:
 concurrency:
@@ -37,7 +37,7 @@ jobs:
           p.write_text(s.replace('versionName = "1728.2.21.4.36"','versionName = "1728.2.21.4.36.1"'))
           PY
       - name: Apply Build 36.3 camera upgrades
-        run: python3 scripts/duwm-build36-3-camera.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+        run: python3 scripts/duwm-build36-2-camera.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
       - name: Set Build 36.3 version
         shell: bash
         run: |
