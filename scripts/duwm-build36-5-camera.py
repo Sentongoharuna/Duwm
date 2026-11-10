@@ -20,6 +20,8 @@ change('recordButton.setMinHeight(dp(68));recordButton.setContentDescription("St
 # Improve zoom button: visible zoom feedback even when no gesture is used.
 change('camera.setParameters(p);}catch(Exception e){note("Zoom unavailable");}}',
        'camera.setParameters(p);note("Zoom "+p.getZoom()+" / "+p.getMaxZoom());}catch(Exception e){note("Zoom unavailable");}}')
+change('previewGrid=new View(this){final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);',
+       'showGrid=getSharedPreferences(VIDEO_SETTINGS,MODE_PRIVATE).getBoolean("composition_grid_enabled",false);previewGrid=new View(this){final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);')
 cam.write_text(s)
 g=root/"app/build.gradle.kts";t=g.read_text()
 old='versionName = "1728.2.21.4.36.4"'
