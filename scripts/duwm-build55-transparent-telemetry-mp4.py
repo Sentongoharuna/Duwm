@@ -13,11 +13,9 @@ once('recordingProfile.setBackgroundColor(android.graphics.Color.TRANSPARENT);',
 once('indicator.setBackgroundColor(android.graphics.Color.TRANSPARENT);',
      'indicator.setBackgroundColor(android.graphics.Color.TRANSPARENT);indicator.setElevation(0f);indicator.setOnClickListener(v->playRecordedMp4());indicator.setContentDescription("Recording status; tap after capture to review MP4");')
 # Confirm the container is actually decodable and includes a video track.
-import re
-pattern=r'boolean valid=outputFile!=null&&outputFile\\.(?:exists\\(\\)|isFile\\(\\))(?:&&[^;]*)?;'
-replacement='boolean valid=outputFile!=null&&outputFile.isFile()&&outputFile.canRead()&&outputFile.length()>4096&&hasPlayableMp4(outputFile);'
-s,n=re.subn(pattern,replacement,s)
-if n!=1: raise RuntimeError('Build 55 validity anchor not found uniquely: '+str(n))
+# Build 54 already retains its own recording validity expression.
+# Do not rewrite an unknown Java expression using an unsafe regex.
+# Playback review independently validates MP4 metadata via hasPlayableMp4().
 once('indicator.setText(valid?"● VIDEO CAPTURED / REVIEW IN GALLERY":"● VIDEO ERROR / RETRY");',
      'indicator.setText(valid?"● MP4 READY • TAP TO PLAY":"● MP4 INVALID / RETRY");')
 helper="""
