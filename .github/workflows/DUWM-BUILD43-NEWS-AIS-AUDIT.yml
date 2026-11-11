@@ -1,0 +1,26 @@
+name: DUWM Build 43 News and AIS Audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/DUWM-BUILD43-NEWS-AIS-AUDIT.yml'
+      - 'scripts/duwm-news-ais-audit.py'
+  workflow_dispatch:
+jobs:
+  news-ais:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify RSS headlines, dates and links and optional AIS provider
+        env:
+          DUWM_AIS_PROBE_URL: ${{ secrets.DUWM_AIS_PROBE_URL }}
+          DUWM_AIS_API_KEY: ${{ secrets.DUWM_AIS_API_KEY }}
+        run: python3 scripts/duwm-news-ais-audit.py
+      - name: Upload source verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-BUILD43-NEWS-AIS-REPORT
+          path: provider-audit/
+          if-no-files-found: error
