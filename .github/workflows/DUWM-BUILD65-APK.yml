@@ -154,6 +154,27 @@ jobs:
         run: python3 scripts/duwm-build64-audio-duration-audit.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
       - name: Apply Build 65 visible lens controls
         run: python3 scripts/duwm-build65-visible-lens-ui.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Enforce Build 65 sixty-upgrade acceptance
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path("build65-acceptance.json")
+          if not path.exists():
+              raise SystemExit("Build 65 BLOCKED: 30 UI and 30 camera upgrades have not been implemented and verified.")
+          data=json.loads(path.read_text())
+          for section in ("ui","camera"):
+              items=data.get(section,[])
+              if len(items)!=30:
+                  raise SystemExit(f"Build 65 BLOCKED: {section} has {len(items)}/30 documented upgrades")
+              for item in items:
+                  if not all(item.get(k) for k in ("id","description","source_path","test_evidence")):
+                      raise SystemExit(f"Build 65 BLOCKED: incomplete evidence for {item}")
+                  if not Path(item["source_path"]).exists():
+                      raise SystemExit(f"Build 65 BLOCKED: missing changed source {item['source_path']}")
+          print("60 upgrade records present; device testing remains separately required")
+          PY
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
