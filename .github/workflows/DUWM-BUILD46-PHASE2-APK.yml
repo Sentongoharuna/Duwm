@@ -1,0 +1,123 @@
+name: DUWM Build 46 Phase 2 Data Repair APK
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/DUWM-BUILD46-PHASE2-APK.yml'
+      - 'scripts/duwm-build36-camera-patches.py'
+      - 'scripts/duwm-build36-2-camera.py'
+      - 'scripts/duwm-build36-4-ui-camera.py'
+      - 'scripts/duwm-build36-5-camera.py'
+      - 'scripts/duwm-build37.py'
+      - 'scripts/duwm-build37-1-ui-polish.py'
+      - 'scripts/duwm-build38-ui.py'
+      - 'scripts/duwm-build39-ui-camera.py'
+      - 'scripts/duwm-build40-camera-reliability.py'
+      - 'scripts/duwm-build41-camera-restore.py'
+      - 'scripts/duwm-build42-visual-foundation.py'
+      - 'scripts/duwm-build43-realtime-verification.py'
+      - 'scripts/duwm-build43-fix1-tests.py'
+      - 'scripts/duwm-build43-2-news-source-health.py'
+      - 'scripts/duwm-build44-public-live.py'
+      - 'scripts/duwm-build45-phase1-globe.py'
+      - 'scripts/duwm-build46-phase2-repair.py'
+      - 'DUWM-MASTER-BASE-35-ONE-TIME-UPLOAD.zip'
+  workflow_dispatch:
+concurrency:
+  group: duwm-build-46-phase2-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify master source
+        run: unzip -t DUWM-MASTER-BASE-35-ONE-TIME-UPLOAD.zip
+      - name: Extract source
+        run: unzip -q DUWM-MASTER-BASE-35-ONE-TIME-UPLOAD.zip -d build-source
+      - name: Apply Build 36 camera improvements
+        run: python3 scripts/duwm-build36-camera-patches.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Set Build 36.1 version
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE/app/build.gradle.kts')
+          s=p.read_text()
+          assert 'versionName = "1728.2.21.4.36"' in s
+          p.write_text(s.replace('versionName = "1728.2.21.4.36"','versionName = "1728.2.21.4.36.1"'))
+          PY
+      - name: Apply Build 36.4 camera upgrades
+        run: python3 scripts/duwm-build36-2-camera.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Set Build 36.3 version
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE/app/build.gradle.kts')
+          s=p.read_text()
+          old='versionName = "1728.2.21.4.36.2"'
+          assert old in s, "Expected Build 36.2 source version"
+          p.write_text(s.replace(old,'versionName = "1728.2.21.4.36.3"'))
+          PY
+      - name: Apply Build 36.4 UI and camera patch
+        run: python3 scripts/duwm-build36-4-ui-camera.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Build 36.5 camera improvements
+        run: python3 scripts/duwm-build36-5-camera.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Build 37 camera and theme improvements
+        run: python3 scripts/duwm-build37.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Build 37.1 UI polish
+        run: python3 scripts/duwm-build37-1-ui-polish.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Build 38 app-wide palette
+        run: python3 scripts/duwm-build38-ui.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Build 39 camera and sector upgrades
+        run: python3 scripts/duwm-build39-ui-camera.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Build 40 camera reliability patch
+        run: python3 scripts/duwm-build40-camera-reliability.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Build 41 camera preference restore
+        run: python3 scripts/duwm-build41-camera-restore.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Build 42 visual foundation
+        run: python3 scripts/duwm-build42-visual-foundation.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Build 43 verified source pulse
+        run: python3 scripts/duwm-build43-realtime-verification.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Repair Build 43 unit test compilation
+        run: python3 scripts/duwm-build43-fix1-tests.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Build 43.2 Android news source verification
+        run: python3 scripts/duwm-build43-2-news-source-health.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Build 44 anonymous aircraft source safeguards
+        run: python3 scripts/duwm-build44-public-live.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Phase 1 original globe overlap fix
+        run: python3 scripts/duwm-build45-phase1-globe.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - name: Apply Phase 2 source reliability repairs
+        run: python3 scripts/duwm-build46-phase2-repair.py build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"; fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Compile APK
+        working-directory: build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE
+        run: gradle --no-daemon --stacktrace :app:assembleDebug :app:testDebugUnitTest
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: DUWM-BUILD46-PHASE2-APK
+          path: build-source/DUWM-1728-2-21-4-14-ANDROID-SOURCE/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
