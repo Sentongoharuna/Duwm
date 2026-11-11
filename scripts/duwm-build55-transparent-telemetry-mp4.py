@@ -17,9 +17,23 @@ once('indicator.setBackgroundColor(android.graphics.Color.TRANSPARENT);',
 # Do not rewrite an unknown Java expression using an unsafe regex.
 # Playback review independently validates MP4 metadata via hasPlayableMp4().
 once('indicator.setText(valid?"● VIDEO CAPTURED / REVIEW IN GALLERY":"● VIDEO ERROR / RETRY");',
-     'lastRecordedMp4=valid?outputFile:null;indicator.setText(valid?"● MP4 READY • TAP TO PLAY":"● MP4 INVALID / RETRY");')
+     'lastRecordedMp4=valid?findLatestRecordedMp4():null;indicator.setText(valid?"● MP4 READY • TAP TO PLAY":"● MP4 INVALID / RETRY");')
 helper="""
     private java.io.File lastRecordedMp4;
+    private java.io.File findLatestRecordedMp4() {
+        java.io.File[] roots={getExternalFilesDir(android.os.Environment.DIRECTORY_MOVIES),getExternalFilesDir(null),getFilesDir()};
+        java.io.File newest=null;
+        for(java.io.File dir:roots) {
+            if(dir==null||!dir.isDirectory())continue;
+            java.io.File[] files=dir.listFiles();
+            if(files==null)continue;
+            for(java.io.File candidate:files) {
+                if(candidate.isFile()&&candidate.getName().toLowerCase(java.util.Locale.US).endsWith(".mp4")&&
+                   (newest==null||candidate.lastModified()>newest.lastModified()))newest=candidate;
+            }
+        }
+        return newest;
+    }
     private boolean hasPlayableMp4(java.io.File file) {
         android.media.MediaMetadataRetriever retriever=new android.media.MediaMetadataRetriever();
         try {
