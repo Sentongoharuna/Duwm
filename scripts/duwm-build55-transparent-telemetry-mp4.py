@@ -17,8 +17,9 @@ once('indicator.setBackgroundColor(android.graphics.Color.TRANSPARENT);',
 # Do not rewrite an unknown Java expression using an unsafe regex.
 # Playback review independently validates MP4 metadata via hasPlayableMp4().
 once('indicator.setText(valid?"● VIDEO CAPTURED / REVIEW IN GALLERY":"● VIDEO ERROR / RETRY");',
-     'indicator.setText(valid?"● MP4 READY • TAP TO PLAY":"● MP4 INVALID / RETRY");')
+     'lastRecordedMp4=valid?outputFile:null;indicator.setText(valid?"● MP4 READY • TAP TO PLAY":"● MP4 INVALID / RETRY");')
 helper="""
+    private java.io.File lastRecordedMp4;
     private boolean hasPlayableMp4(java.io.File file) {
         android.media.MediaMetadataRetriever retriever=new android.media.MediaMetadataRetriever();
         try {
@@ -31,11 +32,11 @@ helper="""
         finally { try {retriever.release();}catch(Exception ignored){} }
     }
     private void playRecordedMp4() {
-        if(outputFile==null||!hasPlayableMp4(outputFile)) {
+        if(lastRecordedMp4==null||!hasPlayableMp4(lastRecordedMp4)) {
             android.widget.Toast.makeText(this,"No playable MP4 yet. Record and stop first.",android.widget.Toast.LENGTH_LONG).show();return;
         }
         android.widget.VideoView video=new android.widget.VideoView(this);
-        video.setVideoURI(android.net.Uri.fromFile(outputFile));
+        video.setVideoURI(android.net.Uri.fromFile(lastRecordedMp4));
         android.widget.MediaController controls=new android.widget.MediaController(this);
         video.setMediaController(controls);
         android.app.AlertDialog dialog=new android.app.AlertDialog.Builder(this).setTitle("DUWM • MP4 review").setView(video).setPositiveButton("Close",(d,w)->video.stopPlayback()).create();
