@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'DUWM-BUILD-67-SOURCE.zip'
       - 'app/**'
       - 'build.gradle.kts'
       - 'settings.gradle.kts'
@@ -39,12 +40,20 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+      - name: Extract uploaded Android source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f DUWM-BUILD-67-SOURCE.zip || { echo 'Source ZIP missing from repository root'; exit 1; }
+          mkdir -p build67-src
+          unzip -q DUWM-BUILD-67-SOURCE.zip -d build67-src
+          test -f build67-src/settings.gradle.kts || test -f build67-src/settings.gradle || { echo 'Gradle settings missing inside ZIP'; exit 1; }
       - name: Build debug APK
-        run: gradle --no-daemon :app:assembleDebug
+        run: gradle --no-daemon -p build67-src :app:assembleDebug
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: DUWM-BUILD-67-DEBUG-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: build67-src/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
