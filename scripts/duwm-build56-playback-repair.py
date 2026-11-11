@@ -9,7 +9,7 @@ def once(a,b):
  if n!=1:raise RuntimeError(f'Build 56 anchor mismatch ({n}): '+a[:90])
  s=s.replace(a,b)
 # Review player: attach after dialog is shown, set layout, focus and errors.
-once('video.setVideoURI(android.net.Uri.fromFile(lastRecordedMp4));','video.setVideoURI(android.net.Uri.fromFile(outputFile));video.setKeepScreenOn(true);video.setFocusable(true);video.setFocusableInTouchMode(true);')
+once('video.setVideoURI(android.net.Uri.fromFile(lastRecordedMp4));','video.setVideoURI(android.net.Uri.fromFile(lastRecordedMp4));video.setKeepScreenOn(true);video.setFocusable(true);video.setFocusableInTouchMode(true);')
 once('video.setMediaController(controls);','video.setMediaController(controls);controls.setAnchorView(video);')
 once('dialog.setOnDismissListener(d->video.stopPlayback());','dialog.setOnDismissListener(d->{video.stopPlayback();video.setKeepScreenOn(false);});')
 once('video.setOnPreparedListener(mp->{video.start();controls.show(2500);});','video.setOnPreparedListener(mp->{mp.setLooping(false);video.requestFocus();video.start();controls.show(2500);});')
