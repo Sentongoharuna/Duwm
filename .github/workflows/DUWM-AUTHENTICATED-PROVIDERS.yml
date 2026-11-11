@@ -1,0 +1,29 @@
+name: DUWM Authenticated Aircraft and AIS Verification
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/DUWM-AUTHENTICATED-PROVIDERS.yml'
+      - 'scripts/duwm-authenticated-provider-audit.py'
+  workflow_dispatch:
+jobs:
+  provider-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install WebSocket test dependency
+        run: python3 -m pip install websockets==14.2
+      - name: Probe authenticated aircraft and AIS sources
+        env:
+          OPENSKY_CLIENT_ID: ${{ secrets.OPENSKY_CLIENT_ID }}
+          OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
+          DUWM_AIS_API_KEY: ${{ secrets.DUWM_AIS_API_KEY }}
+        run: python3 scripts/duwm-authenticated-provider-audit.py
+      - name: Upload provider results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-AUTHENTICATED-PROVIDER-REPORT
+          path: provider-audit/
+          if-no-files-found: error
