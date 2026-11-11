@@ -165,13 +165,9 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set -e
           mkdir -p recording-audit
-          echo "# DUWM Build 56 recording verification" > recording-audit/REPORT.md
-          echo "Emulator instrumentation: ${{ steps.emulator.outcome }}" >> recording-audit/REPORT.md
-          echo "APK and unit tests: inspect preceding steps." >> recording-audit/REPORT.md
-          echo "Physical recording, MP4 playback, microphone input, and burnt-in export remain UNVERIFIED unless separately tested on a real device." >> recording-audit/REPORT.md
-          find build-source -path '*/build/test-results/*' -type f -exec cp --parents {} recording-audit/ \\; || true
-          find build-source -path '*/build/outputs/androidTest-results/*' -type f -exec cp --parents {} recording-audit/ \\; || true
+          printf '%s\n' '# DUWM Build 56 recording verification' 'Emulator instrumentation: ${{ steps.emulator.outcome }}' 'MP4 playback and burnt-in telemetry require real-device verification.' > recording-audit/REPORT.md
       - name: Upload recording audit report
         if: always()
         uses: actions/upload-artifact@v4
