@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'DUWM-BUILD-77-REAL-UI-SOURCE.zip'
+      - 'DUWM-BUILD-77-SOURCE.zip'
       - '.github/workflows/duwm-build-77.yml'
 jobs:
   android:
@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          unzip -q DUWM-BUILD-77-REAL-UI-SOURCE.zip -d source
+          unzip -q DUWM-BUILD-77-SOURCE.zip -d source
           ROOT="$(find source -name settings.gradle.kts -o -name settings.gradle | head -n 1)"
           test -n "$ROOT" || { echo "No Android Gradle project in source ZIP"; exit 1; }
           ROOT="$(dirname "$ROOT")"
