@@ -1,0 +1,91 @@
+name: Build DU World Monitor APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Locate the Android project
+        run: |
+          set -e
+          SETTINGS="$(find . -name settings.gradle.kts -not -path '*/build/*' -not -path './_src/*' | head -n 1)"
+          if [ -z "$SETTINGS" ]; then
+            ZIP="$(ls -t *.zip 2>/dev/null | head -n 1 || true)"
+            if [ -n "$ZIP" ]; then
+              echo "No project folder found; unpacking $ZIP"
+              mkdir -p _src && unzip -q -o "$ZIP" -d _src
+              SETTINGS="$(find _src -name settings.gradle.kts | head -n 1)"
+            fi
+          fi
+          if [ -z "$SETTINGS" ]; then echo "::error::settings.gradle.kts not found in the repository"; exit 1; fi
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+          echo "Android project: $(dirname "$SETTINGS")"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Install Android SDK 36
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Restore retained debug signer (optional)
+        env:
+          KS: ${{ secrets.DUWM_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            mkdir -p "$HOME/.android"
+            echo "$KS" | base64 -d > "$HOME/.android/debug.keystore"
+            echo "Using the retained debug signer, so the APK installs over the previous one."
+          else
+            echo "::warning::DUWM_DEBUG_KEYSTORE_BASE64 is not set. This APK is signed with a new key; uninstall the old app before installing."
+          fi
+
+      - name: Build debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -o pipefail
+          gradle --no-daemon --console=plain :app:assembleDebug --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/gradle-build.log"
+
+      - name: Show the first errors
+        if: failure()
+        run: |
+          {
+            echo "## Build failed - first errors"
+            echo '```'
+            grep -n -E 'error:|FAILED|What went wrong|AAPT|Could not resolve|Manifest merger failed' gradle-build.log | head -n 60 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DU-World-Monitor-114-debug-apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-build-log
+          path: gradle-build.log
+          if-no-files-found: ignore
