@@ -1,16 +1,12 @@
-name: DUWM Android APK - Select Source
+name: DUWM Android APK - Build 102 Fix
 on:
   workflow_dispatch:
     inputs:
       source_zip:
         description: 'Exact uploaded source ZIP filename in repository root'
         required: true
-        default: 'DUWM-BUILD-81-FUNCTIONAL-REV17-GLOBE-CONTROLS.zip'
+        default: 'DUWM-BUILD-102-MANIFEST-FIX-SOURCE.zip'
         type: string
-  push:
-    paths:
-      - 'DUWM-BUILD-*-SOURCE.zip'
-      - '.github/workflows/duwm-android-build.yml'
 permissions:
   contents: read
 jobs:
@@ -27,27 +23,20 @@ jobs:
         shell: bash
         env:
           REQUESTED_ZIP: ${{ inputs.source_zip }}
-          EVENT_NAME: ${{ github.event_name }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
           ZIP="$REQUESTED_ZIP"
-          if [[ "$EVENT_NAME" == push ]]; then
-            ZIP="$(git diff-tree --no-commit-id --name-only -r HEAD | grep -E '^DUWM-BUILD-[0-9]+-SOURCE\.zip$' | tail -1 || true)"
-            if [[ -z "$ZIP" ]]; then
-              echo "::notice::No new numbered source ZIP in push; using latest uploaded numbered ZIP"
-              ZIP="$(find . -maxdepth 1 -type f -name 'DUWM-BUILD-*-SOURCE.zip' -printf '%f\n' | sort -V | tail -1)"
-            fi
-          fi
           [[ "$ZIP" =~ ^DUWM-BUILD-[A-Za-z0-9._-]+\.zip$ ]] || { echo "::error::Invalid source ZIP filename"; exit 1; }
           test -f "$ZIP" || { echo "::error::Source ZIP not found: $ZIP"; exit 1; }
           unzip -tq "$ZIP" >/dev/null || { echo "::error::Invalid ZIP archive"; exit 1; }
           mkdir -p source
           unzip -q "$ZIP" -d source
+          echo "::notice::Selected source archive: $ZIP"
           SETTINGS="$(find source -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -1)"
           test -n "$SETTINGS" || { echo "::error::No Android Gradle settings in ZIP"; exit 1; }
           ROOT="$(dirname "$SETTINGS")"
           test -d "$ROOT/app" || { echo "::error::Android app module missing"; exit 1; }
+          python3 -c 'import xml.etree.ElementTree as E,sys; E.parse(sys.argv[1]); print("Manifest XML valid")' "$ROOT/app/src/main/AndroidManifest.xml"
           echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
           echo "SOURCE_ZIP=$ZIP" >> "$GITHUB_ENV"
           echo "Source archive: $ZIP" >> "$GITHUB_STEP_SUMMARY"
