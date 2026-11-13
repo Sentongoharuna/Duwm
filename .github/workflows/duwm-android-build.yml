@@ -1,0 +1,93 @@
+name: DUWM Android APK - Select Source
+on:
+  workflow_dispatch:
+    inputs:
+      source_zip:
+        description: 'Exact uploaded source ZIP filename in repository root'
+        required: true
+        default: 'DUWM-BUILD-81-FUNCTIONAL-REV17-GLOBE-CONTROLS.zip'
+        type: string
+  push:
+    paths:
+      - 'DUWM-BUILD-*-SOURCE.zip'
+      - '.github/workflows/duwm-android-build.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Select and validate source archive
+        shell: bash
+        env:
+          REQUESTED_ZIP: ${{ inputs.source_zip }}
+          EVENT_NAME: ${{ github.event_name }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          ZIP="$REQUESTED_ZIP"
+          if [[ "$EVENT_NAME" == push ]]; then
+            ZIP="$(git diff-tree --no-commit-id --name-only -r HEAD | grep -E '^DUWM-BUILD-[0-9]+-SOURCE\.zip$' | tail -1 || true)"
+            if [[ -z "$ZIP" ]]; then
+              echo "::notice::No new numbered source ZIP in push; using latest uploaded numbered ZIP"
+              ZIP="$(find . -maxdepth 1 -type f -name 'DUWM-BUILD-*-SOURCE.zip' -printf '%f\n' | sort -V | tail -1)"
+            fi
+          fi
+          [[ "$ZIP" =~ ^DUWM-BUILD-[A-Za-z0-9._-]+\.zip$ ]] || { echo "::error::Invalid source ZIP filename"; exit 1; }
+          test -f "$ZIP" || { echo "::error::Source ZIP not found: $ZIP"; exit 1; }
+          unzip -tq "$ZIP" >/dev/null || { echo "::error::Invalid ZIP archive"; exit 1; }
+          mkdir -p source
+          unzip -q "$ZIP" -d source
+          SETTINGS="$(find source -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -1)"
+          test -n "$SETTINGS" || { echo "::error::No Android Gradle settings in ZIP"; exit 1; }
+          ROOT="$(dirname "$SETTINGS")"
+          test -d "$ROOT/app" || { echo "::error::Android app module missing"; exit 1; }
+          echo "PROJECT_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "SOURCE_ZIP=$ZIP" >> "$GITHUB_ENV"
+          echo "Source archive: $ZIP" >> "$GITHUB_STEP_SUMMARY"
+      - name: Install Android command line tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/android-sdk}"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          curl -fL --retry 3 -o /tmp/cli.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q /tmp/cli.zip -d /tmp/android-cli
+          rm -rf "$SDK_ROOT/cmdline-tools/latest"
+          mv /tmp/android-cli/cmdline-tools "$SDK_ROOT/cmdline-tools/latest"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses >/dev/null || test "${PIPESTATUS[1]}" -eq 0
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Compile Android debug APK
+        shell: bash
+        run: gradle --no-daemon -p "$PROJECT_ROOT" :app:assembleDebug --stacktrace
+      - name: Check APK output
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find "$PROJECT_ROOT/app/build/outputs/apk/debug" -name '*.apk' -type f | head -1)"
+          test -s "$APK" || { echo "::error::APK missing or empty"; exit 1; }
+          sha256sum "$APK" | tee apk-sha256.txt
+          echo "APK compiled: $(basename "$APK")" >> "$GITHUB_STEP_SUMMARY"
+          echo "Source: $SOURCE_ZIP" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-ANDROID-DEBUG-APK
+          path: |
+            ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/debug/*.apk
+            apk-sha256.txt
+          if-no-files-found: error
+          retention-days: 30
