@@ -1,0 +1,30 @@
+name: DUWM Build 115 (uploaded source required)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build115:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require exact Build 115 source
+        run: |
+          test -f DUWM-BUILD-115-SOURCE.zip || { echo "::error::Upload DUWM-BUILD-115-SOURCE.zip to repository root before running Build 115"; exit 1; }
+          mkdir -p build115
+          unzip -q DUWM-BUILD-115-SOURCE.zip -d build115
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Build source APK
+        run: |
+          cd build115
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DUWM-BUILD-115-debug-apk
+          path: build115/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
