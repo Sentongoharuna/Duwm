@@ -1,6 +1,10 @@
-name: DUWM Build 115 (uploaded source required)
+name: DUWM Build 115 FIX1 - Source-aware APK
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/duwm-build-115.yml'
+      - 'DUWM-BUILD-115-SOURCE.zip'
 permissions:
   contents: read
 jobs:
@@ -8,23 +12,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Require exact Build 115 source
+      - name: Select source without replacing user changes
+        shell: bash
         run: |
-          test -f DUWM-BUILD-115-SOURCE.zip || { echo "::error::Upload DUWM-BUILD-115-SOURCE.zip to repository root before running Build 115"; exit 1; }
-          mkdir -p build115
-          unzip -q DUWM-BUILD-115-SOURCE.zip -d build115
+          set -euo pipefail
+          if [[ -f DUWM-BUILD-115-SOURCE.zip ]]; then
+            mkdir -p build115
+            unzip -q DUWM-BUILD-115-SOURCE.zip -d build115
+            echo "PROJECT_DIR=build115" >> "$GITHUB_ENV"
+            echo "SOURCE_LABEL=115-uploaded-source" >> "$GITHUB_ENV"
+          elif [[ -f gradlew && ( -f settings.gradle.kts || -f settings.gradle ) ]]; then
+            echo "::warning::Build 115 ZIP absent. Compiling existing repository source, NOT claiming this is uploaded Build 115."
+            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
+            echo "SOURCE_LABEL=repository-source-fallback" >> "$GITHUB_ENV"
+          else
+            echo "::error::No Android Gradle source found."
+            exit 1
+          fi
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
-      - name: Build source APK
+      - name: Compile Android debug APK
+        shell: bash
         run: |
-          cd build115
+          cd "$PROJECT_DIR"
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
-      - uses: actions/upload-artifact@v4
+          ./gradlew --no-daemon assembleDebug --stacktrace
+      - name: Publish APK
+        uses: actions/upload-artifact@v4
         with:
-          name: DUWM-BUILD-115-debug-apk
-          path: build115/**/build/outputs/apk/debug/*.apk
+          name: DUWM-debug-apk-source-aware
+          path: "**/build/outputs/apk/debug/*.apk"
           if-no-files-found: error
